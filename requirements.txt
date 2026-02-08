@@ -1,0 +1,68 @@
+# RTMToOpenSim - Python Dependencies
+# ====================================
+# Install with: pip install -r requirements.txt
+#
+# IMPORTANT: Install PyTorch FIRST (see below), then this file.
+# This file is for the main "mmpose" conda environment (Python 3.10).
+# OpenSim/Pose2Sim IK runs in a separate "Pose2Sim" environment (see HOW_TO_RUN.md).
+
+# --------------------
+# PyTorch (install separately with CUDA support BEFORE this file)
+# --------------------
+# Pick the command for your CUDA version from https://pytorch.org/get-started/locally/
+#
+#   CUDA 12.1:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#   CUDA 12.4:  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+#   CPU only:   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#
+torch>=2.0.0
+torchvision
+
+# --------------------
+# Core scientific computing
+# --------------------
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+
+# --------------------
+# Computer vision
+# --------------------
+opencv-python>=4.8.0
+tqdm>=4.65.0
+
+# --------------------
+# MMPose ecosystem (for RTMW inference)
+# --------------------
+# Install in this order. On Windows, mmcv with CUDA ops may need building from source.
+# See: https://mmcv.readthedocs.io/en/latest/get_started/installation.html
+mmengine>=0.7.0
+mmcv>=2.0.0
+mmdet>=3.0.0
+mmpose>=1.0.0
+
+# --------------------
+# RTMPose3D (standalone wrapper for RTMW models)
+# --------------------
+# pip install rtmpose3d
+# Or: pip install git+https://github.com/b-arac/rtmpose3d.git
+rtmpose3d
+
+# --------------------
+# MotionBERT dependencies (model is vendored in models/MotionBERT/)
+# --------------------
+easydict
+pyyaml>=6.0
+
+# --------------------
+# Pose2Sim (for model scaling setup files + marker definitions)
+# --------------------
+# Note: Pose2Sim is imported in the main env for accessing setup files.
+# Actual IK runs in the separate Pose2Sim env with OpenSim.
+pose2sim>=0.10.0
+
+# --------------------
+# xtcocotools (may need special install on some platforms)
+# --------------------
+# If pip install fails, try:
+#   pip install --no-binary xtcocotools --no-build-isolation xtcocotools
+xtcocotools

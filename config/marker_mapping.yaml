@@ -1,0 +1,164 @@
+# COCO-WholeBody 133 Keypoints to OpenSim Marker Mapping
+# ========================================================
+#
+# RTMPose3D (RTMW3D) outputs 133 keypoints in COCO-WholeBody format.
+# This file defines the mapping to OpenSim markers for inverse kinematics.
+
+# Full COCO-WholeBody keypoint definitions (133 total)
+coco_wholebody_keypoints:
+  # Body (17 points, indices 0-16)
+  0: nose
+  1: left_eye
+  2: right_eye
+  3: left_ear
+  4: right_ear
+  5: left_shoulder
+  6: right_shoulder
+  7: left_elbow
+  8: right_elbow
+  9: left_wrist
+  10: right_wrist
+  11: left_hip
+  12: right_hip
+  13: left_knee
+  14: right_knee
+  15: left_ankle
+  16: right_ankle
+
+  # Feet (6 points, indices 17-22)
+  17: left_big_toe
+  18: left_small_toe
+  19: left_heel
+  20: right_big_toe
+  21: right_small_toe
+  22: right_heel
+
+  # Face (68 points, indices 23-90) - not individually listed
+  # Left Hand (21 points, indices 91-111)
+  91: left_wrist_hand
+  96: left_index_mcp
+  100: left_middle_mcp
+  103: left_middle_tip
+
+  # Right Hand (21 points, indices 112-132)
+  112: right_wrist_hand
+  117: right_index_mcp
+  121: right_middle_mcp
+  124: right_middle_tip
+
+# OpenSim marker mapping (24 markers: 21 direct + 3 derived)
+opensim_markers:
+  # Head markers
+  Nose:
+    coco_idx: 0
+    body: head
+    weight: 0.35
+  LEar:
+    coco_idx: 3
+    body: head
+    weight: 0.30
+  REar:
+    coco_idx: 4
+    body: head
+    weight: 0.30
+
+  # Torso markers
+  LShoulder:
+    coco_idx: 5
+    body: torso
+    weight: 1.0
+  RShoulder:
+    coco_idx: 6
+    body: torso
+    weight: 1.0
+
+  # Arms
+  LElbow:
+    coco_idx: 7
+    body: humerus_l
+    weight: 1.0
+  RElbow:
+    coco_idx: 8
+    body: humerus_r
+    weight: 1.0
+  LWrist:
+    coco_idx: 9
+    body: radius_l
+    weight: 1.0
+  RWrist:
+    coco_idx: 10
+    body: radius_r
+    weight: 1.0
+
+  # Hand markers for forearm pronation/supination
+  LIndex3:
+    coco_idx: 96      # left_index_mcp
+    body: radius_l
+    weight: 0.6
+  RIndex3:
+    coco_idx: 117     # right_index_mcp
+    body: radius_r
+    weight: 0.6
+  LMiddleTip:
+    coco_idx: 103     # left_middle_tip
+    body: radius_l
+    weight: 0.5
+  RMiddleTip:
+    coco_idx: 124     # right_middle_tip
+    body: radius_r
+    weight: 0.5
+
+  # Pelvis / lower body
+  LHip:
+    coco_idx: 11
+    body: pelvis
+    weight: 1.0
+  RHip:
+    coco_idx: 12
+    body: pelvis
+    weight: 1.0
+  LKnee:
+    coco_idx: 13
+    body: femur_l
+    weight: 1.0
+  RKnee:
+    coco_idx: 14
+    body: femur_r
+    weight: 1.0
+  LAnkle:
+    coco_idx: 15
+    body: tibia_l
+    weight: 1.0
+  RAnkle:
+    coco_idx: 16
+    body: tibia_r
+    weight: 1.0
+
+  # Feet
+  LHeel:
+    coco_idx: 19
+    body: calcn_l
+    weight: 0.6
+  RHeel:
+    coco_idx: 22
+    body: calcn_r
+    weight: 0.6
+
+# Derived markers (computed from combinations of keypoints)
+derived_markers:
+  Neck:
+    type: midpoint
+    points: [5, 6]        # midpoint of left_shoulder and right_shoulder
+    body: torso
+    weight: 1.0
+  PelvisCenter:
+    type: midpoint
+    points: [11, 12]      # midpoint of left_hip and right_hip
+    body: pelvis
+    weight: 1.0
+  SpineMid:
+    type: interpolate
+    points: [11, 12, 5, 6]  # interpolate between hip midpoint and shoulder midpoint
+    ratio: 0.5
+    body: torso
+    weight: 0.8

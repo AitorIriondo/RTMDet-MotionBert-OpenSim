@@ -1,0 +1,31 @@
+# RTMToOpenSim Pipeline Configuration
+# =====================================
+
+input:
+  video_path: null    # Set via CLI
+  fps: 30             # Target FPS for frame extraction
+
+subject:
+  height: 1.75        # Subject height in meters
+  mass: 70            # Subject mass in kg
+
+rtmpose3d:
+  model_name: "rbarac/rtmpose3d"    # HuggingFace model name
+  device: "cuda:0"                   # cuda:0 or cpu
+  confidence_threshold: 0.3          # Min confidence for keypoint acceptance
+
+processing:
+  smooth_filter: true
+  filter_cutoff: 6      # Butterworth cutoff frequency (Hz). 0 = disable
+  filter_order: 4        # Butterworth filter order
+  normalize_bones: true  # Enforce anthropometric bone lengths
+
+opensim:
+  # Uses Pose2Sim's bundled Model_Pose2Sim_simple.osim (40 DOF)
+  use_pose2sim_model: true
+
+output:
+  directory: null     # Auto-generated if null
+  save_trc: true
+  save_mot: true
+  save_fbx: false     # Requires Blender 5.0+

@@ -1,0 +1,11 @@
+# RTMToOpenSim - Pose2Sim Environment Dependencies
+# ==================================================
+# This is for the SEPARATE "Pose2Sim" conda environment used for OpenSim IK.
+#
+# Setup:
+#   conda create -n Pose2Sim python=3.12 -y
+#   conda activate Pose2Sim
+#   conda install -c opensim-org opensim=4.5.2
+#   pip install -r requirements_pose2sim.txt
+
+pose2sim>=0.10.0

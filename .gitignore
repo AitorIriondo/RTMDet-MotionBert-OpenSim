@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Model checkpoints (download separately)
+models/MotionBERT/checkpoint/
+*.bin
+*.pth
+*.pt
+
+# Pipeline outputs
+test_output*/
+output_*/
+frames/
+*.trc
+*.mot
+*.osim
+*.fbx
+*.sto
+
+# Temporary files
+_run_*.py
+*.log
