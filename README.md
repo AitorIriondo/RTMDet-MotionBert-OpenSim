@@ -10,7 +10,7 @@ This pipeline uses [RTMW](https://github.com/open-mmlab/mmpose) (OpenMMLab) for 
 ```
 Video → RTMDet → RTMW 2D (133 keypoints) → MotionBERT 3D Lifting → 22 OpenSim Markers → IK → Joint Angles (.mot)
               ↓                                     ↓                                             ↓
-         Person bbox                          H36M camera 3D                              Blender → FBX Animation
+         Person bbox                          H36M camera 3D                              Blender → GLB/FBX Animation
 ```
 
 ## Features
@@ -25,7 +25,7 @@ Video → RTMDet → RTMW 2D (133 keypoints) → MotionBERT 3D Lifting → 22 Op
 - **Hand markers for forearm rotation**: Better pronation/supination tracking
 - **Butterworth smoothing**: Configurable low-pass filter to reduce jitter (default 6 Hz)
 - **OpenSim IK** with 40 DOF using Pose2Sim model (two-pass with pelvis regularization)
-- **FBX export** via Blender with rigged skeleton template
+- **GLB + FBX export** via Blender with rigged skeleton template (quaternion-native GLB for universal viewer compatibility)
 - **Two-stage workflow**: Separate inference (slow) from export (fast) for rapid iteration
 
 ## Performance
@@ -35,7 +35,7 @@ Tested on NVIDIA RTX GPU with 1136 frames (37.8 sec video, 1920x1080):
 | Stage | Time | Speed |
 |-------|------|-------|
 | RTMW Inference | ~89 sec | ~12.7 frames/sec |
-| Hybrid Export (MotionBERT + IK + FBX) | ~17 sec | ~67 frames/sec |
+| Hybrid Export (MotionBERT + IK + GLB/FBX) | ~17 sec | ~67 frames/sec |
 | OpenSim IK (Pass 1 + Pass 2) | ~6 sec | ~189 frames/sec |
 
 ## Quick Start
@@ -96,7 +96,7 @@ python run_hybrid_pipeline.py --input output_dir/video_outputs.json --height 1.6
 | `--device` | Device for MotionBERT (cuda:0 or cpu) | cuda:0 |
 | `--pose-model` | IK marker set: **COCO_17** (22 markers) or COCO_133 (27 markers) | COCO_17 |
 | `--skip-ik` | Skip OpenSim inverse kinematics | false |
-| `--skip-fbx` | Skip FBX export | false |
+| `--skip-fbx` | Skip GLB/FBX export | false |
 | `--person` | Person index | 0 |
 | `--fps` | Override FPS (default: from metadata) | Auto |
 
@@ -113,7 +113,8 @@ output_dir/
 │   ├── markers_videoname_22markers.osim  # Model with eye + hand markers
 │   ├── markers_videoname.mot         # Joint angles (40 DOF)
 │   └── *_ik_setup*.xml              # IK solver configuration
-└── markers_videoname.fbx             # Animated skeleton for 3D software
+├── markers_videoname.fbx             # Animated skeleton (Blender)
+└── markers_videoname.glb             # Animated skeleton (universal viewers, quaternion-native)
 ```
 
 ## Pipeline Stages
@@ -129,7 +130,7 @@ output_dir/
 9. **Coordinate Transform**: H36M camera → OpenSim world coordinates
 10. **TRC Export**: 22 markers in OpenSim format
 11. **OpenSim IK**: Two-pass inverse kinematics → 40 DOF joint angles
-12. **FBX Export**: Blender animated skeleton
+12. **GLB/FBX Export**: Blender animated skeleton (GLB with quaternions + FBX)
 
 ## Documentation
 
@@ -146,7 +147,7 @@ output_dir/
 - rtmpose3d
 - MotionBERT (bundled, checkpoint downloaded separately)
 - OpenSim 4.5+ (via Pose2Sim, in separate conda environment)
-- Blender 5.0+ (optional, for FBX export)
+- Blender 5.0+ (optional, for GLB/FBX export)
 
 See [requirements.txt](requirements.txt) for Python packages.
 

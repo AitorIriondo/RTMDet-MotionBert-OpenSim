@@ -37,6 +37,7 @@ frames/
 *.mot
 *.osim
 *.fbx
+*.glb
 *.sto
 
 # Temporary files

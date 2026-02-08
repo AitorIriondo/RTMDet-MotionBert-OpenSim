@@ -606,7 +606,12 @@ except Exception as e:
 
 
 def run_fbx_export(mot_path: Path, output_dir: Path):
-    """Export FBX using Blender with skeleton template."""
+    """Export FBX + GLB using Blender with skeleton template.
+
+    The Blender script exports both formats:
+    - FBX: works in Blender
+    - GLB (binary glTF): works in all external viewers (quaternion-native)
+    """
     import subprocess
 
     BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe"
@@ -615,6 +620,7 @@ def run_fbx_export(mot_path: Path, output_dir: Path):
 
     mot_path = Path(mot_path).resolve()
     fbx_path = output_dir / f"{mot_path.stem.replace('_ik', '')}.fbx"
+    glb_path = fbx_path.with_suffix('.glb')
 
     if not Path(BLENDER_PATH).exists():
         print(f"  Blender not found: {BLENDER_PATH}")
@@ -634,6 +640,8 @@ def run_fbx_export(mot_path: Path, output_dir: Path):
 
     if result.returncode == 0:
         print(f"  FBX: {fbx_path}")
+        if glb_path.exists():
+            print(f"  GLB: {glb_path}")
         return fbx_path
     else:
         if result.stderr:

@@ -207,7 +207,7 @@ def run_hybrid_pipeline(
         trc_exporter.export(markers, marker_names, str(trc_path))
         print(f"  TRC: {trc_path}")
 
-        results = {"trc": trc_path, "mot": None, "fbx": None}
+        results = {"trc": trc_path, "mot": None, "fbx": None, "glb": None}
 
         # Pose2Sim IK with COCO_17
         if not skip_ik:
@@ -287,7 +287,7 @@ def run_hybrid_pipeline(
         trc_exporter.export(markers, marker_names, str(trc_path))
         print(f"  TRC: {trc_path}")
 
-        results = {"trc": trc_path, "mot": None, "fbx": None}
+        results = {"trc": trc_path, "mot": None, "fbx": None, "glb": None}
 
         if not skip_ik:
             print("\nRunning Pose2Sim scaling + IK...")
@@ -308,12 +308,15 @@ def run_hybrid_pipeline(
         else:
             print("\nSkipping IK")
 
-    # FBX export
+    # FBX + GLB export
     if not skip_fbx and not skip_ik and results["mot"]:
-        print("\nExporting FBX...")
+        print("\nExporting FBX + GLB...")
         from run_export import run_fbx_export
         fbx_path = run_fbx_export(results["mot"], output_dir)
         results["fbx"] = fbx_path
+        if fbx_path:
+            glb_path = Path(fbx_path).with_suffix('.glb')
+            results["glb"] = glb_path if glb_path.exists() else None
 
     # Summary
     elapsed = time.time() - start_time

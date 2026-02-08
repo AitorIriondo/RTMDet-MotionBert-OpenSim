@@ -1,6 +1,6 @@
 # How to Run RTMToOpenSim
 
-Monocular video to OpenSim motion data (TRC / MOT / FBX).
+Monocular video to OpenSim motion data (TRC / MOT / GLB / FBX).
 
 ---
 
@@ -32,7 +32,7 @@ Monocular video to OpenSim motion data (TRC / MOT / FBX).
 |----------|---------|----------|
 | Anaconda / Miniconda | any | Yes |
 | CUDA Toolkit | 12.1+ | Yes (for GPU) |
-| Blender | 5.0+ | Optional (FBX export only) |
+| Blender | 5.0+ | Optional (GLB/FBX export only) |
 
 ---
 
@@ -116,14 +116,14 @@ Switch back to the main environment:
 conda activate mmpose
 ```
 
-### 8. (Optional) Install Blender for FBX export
+### 8. (Optional) Install Blender for GLB/FBX export
 
 Download and install [Blender 5.0+](https://www.blender.org/download/) to the default location:
 ```
 C:\Program Files\Blender Foundation\Blender 5.0\blender.exe
 ```
 
-The pipeline will skip FBX export automatically if Blender is not found.
+The pipeline will skip GLB/FBX export automatically if Blender is not found.
 
 ---
 
@@ -189,7 +189,7 @@ python run_hybrid_pipeline.py ^
     --height 1.69
 ```
 
-This creates TRC, MOT, and FBX output files (see [Output Files](#output-files)).
+This creates TRC, MOT, GLB, and FBX output files (see [Output Files](#output-files)).
 
 ### Quick one-liner
 
@@ -252,7 +252,7 @@ python run_hybrid_pipeline.py [OPTIONS]
 | `--fps` | from metadata | Override FPS. Default: read from `inference_meta.json` |
 | `--smooth` | `6.0` | Butterworth low-pass filter cutoff in Hz. `0` = disable smoothing |
 | `--skip-ik` | false | Skip OpenSim scaling + inverse kinematics. Outputs TRC only |
-| `--skip-fbx` | false | Skip Blender FBX export |
+| `--skip-fbx` | false | Skip Blender GLB/FBX export |
 | `--person` | `0` | Person index (0 = first person) |
 | `--device` | `cuda:0` | Device for MotionBERT inference. Use `cpu` if no GPU |
 | `--pose-model` | `COCO_17` | Pose model for IK. `COCO_17` = 22 markers (recommended), `COCO_133` = 27 markers |
@@ -322,7 +322,7 @@ python run_export.py [OPTIONS]
 | `--fps` | from metadata | Override FPS |
 | `--smooth` | `6.0` | Butterworth cutoff Hz (0 = disable) |
 | `--skip-ik` | false | Skip OpenSim IK |
-| `--skip-fbx` | false | Skip FBX export |
+| `--skip-fbx` | false | Skip GLB/FBX export |
 | `--person` | `0` | Person index |
 
 ---
@@ -348,7 +348,8 @@ After running both stages, you will have:
 | `kinematics/*_22markers.osim` | Model with extra eye + hand markers for Pass 2 IK |
 | `kinematics/*.mot` | 40 joint angles in degrees (from inverse kinematics) |
 | `kinematics/*_ik_setup*.xml` | IK solver configuration files |
-| `*.fbx` | Skeleton animation for Blender/game engines (optional) |
+| `*.glb` | Skeleton animation for universal viewers — Three.js, Unity, Unreal, web (quaternion-native) |
+| `*.fbx` | Skeleton animation for Blender (optional) |
 
 ### Joint angles in the MOT file
 
@@ -374,9 +375,13 @@ The `.mot` file contains 40 degrees of freedom:
 2. Load motion data: `kinematics/*.mot`
 3. Click Play to view the animation
 
+### 3D Viewers (Three.js, Unity, Unreal, web)
+
+Import the `.glb` file directly. GLB uses quaternions natively, so there are no Euler angle wrapping artifacts.
+
 ### Blender
 
-1. Import the `.fbx` file directly
+1. Import the `.fbx` or `.glb` file directly
 2. Or open `Import_OS4_Patreon_Aitor_Skely.blend` and load the `.mot` via the included script
 
 ### TRC inspection
@@ -408,12 +413,12 @@ If your Pose2Sim environment is at a different path, the pipeline will try `sys.
 
 ### "Blender not found"
 
-FBX export requires Blender 5.0+ installed at:
+GLB/FBX export requires Blender 5.0+ installed at:
 ```
 C:\Program Files\Blender Foundation\Blender 5.0\blender.exe
 ```
 
-Use `--skip-fbx` to skip FBX export if Blender is not installed. The TRC and MOT files will still be generated.
+Use `--skip-fbx` to skip GLB/FBX export if Blender is not installed. The TRC and MOT files will still be generated.
 
 ### CUDA out of memory
 
@@ -466,10 +471,10 @@ Stage 2: run_hybrid_pipeline.py
     +-- Pose2Sim scaling + Pass 1 IK (14 body markers)
     +-- Pass 2 IK (22 markers + pelvis regularization)
     +-- Post-process MOT (zero hip_rotation)
-    +-- FBX export via Blender (optional)
+    +-- GLB/FBX export via Blender (optional)
     |
     v
-TRC + MOT + FBX
+TRC + MOT + GLB + FBX
 ```
 
 ### Coordinate Systems
