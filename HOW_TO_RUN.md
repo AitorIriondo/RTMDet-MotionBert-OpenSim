@@ -116,7 +116,27 @@ Switch back to the main environment:
 conda activate mmpose
 ```
 
-### 8. (Optional) Install Blender for GLB/FBX export
+### 8. Fix Pose2Sim marker bug (required for Pose2Sim >= 0.10.33)
+
+Pose2Sim versions 0.10.33 and later have a bug in `Markers_Coco17.xml` that corrupts the RHip and LKnee marker positions, causing disproportionate model scaling (femur ~2x too long, pelvis ~0.6x too small). This project includes a fix script:
+
+```bash
+# From the Pose2Sim environment:
+conda activate Pose2Sim
+python fix_pose2sim.py
+
+# Or just check without fixing:
+python fix_pose2sim.py --check
+```
+
+The script auto-detects the corruption and replaces the affected markers with the correct symmetric positions from the project's `opensim_setup/Markers_Coco17.xml`.
+
+Switch back to the main environment:
+```bash
+conda activate mmpose
+```
+
+### 9. (Optional) Install Blender for GLB/FBX export
 
 Download and install [Blender 5.0+](https://www.blender.org/download/) to the default location:
 ```
@@ -431,6 +451,18 @@ Typical RMS marker errors for markerless pose estimation:
 - Body markers: 30-50 mm (normal)
 - Hand markers: 60-100 mm (normal, projected from 2D)
 - If errors are consistently > 100 mm for body markers, check that `--height` matches the actual subject
+
+### Disproportionate model (femur too long, pelvis too small)
+
+If the scaled `.osim` model looks disproportionate (e.g., femur scale ~2.2x, pelvis ~0.8x), this is caused by a bug in **Pose2Sim >= 0.10.33** (`Markers_Coco17.xml` corruption). Run the included fix:
+
+```bash
+conda activate Pose2Sim
+python fix_pose2sim.py
+conda activate mmpose
+```
+
+Then re-run Stage 2 (`run_hybrid_pipeline.py`) to regenerate the scaled model.
 
 ### "mmcv" or "mmdet" import errors
 

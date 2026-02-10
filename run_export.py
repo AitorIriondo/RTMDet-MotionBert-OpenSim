@@ -200,6 +200,28 @@ def run_export(
     return results
 
 
+def _check_pose2sim_marker_bug(pose2sim_python: str):
+    """Check for and auto-fix the Pose2Sim Markers_Coco17.xml corruption bug."""
+    fix_script = Path(__file__).parent / "fix_pose2sim.py"
+    if not fix_script.exists():
+        return
+
+    import subprocess as sp
+    result = sp.run(
+        [pose2sim_python, str(fix_script), "--check"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0 and "Corruption detected" in (result.stdout + result.stderr):
+        print("  WARNING: Pose2Sim Markers_Coco17.xml bug detected! Auto-fixing...")
+        fix_result = sp.run(
+            [pose2sim_python, str(fix_script)],
+            capture_output=True, text=True,
+        )
+        for line in (fix_result.stdout or "").split("\n"):
+            if line.strip():
+                print(f"  {line}")
+
+
 def run_pose2sim_kinematics(trc_path: Path, output_dir: Path,
                              height: float, mass: float,
                              pose_model: str = "COCO_133"):
@@ -218,7 +240,7 @@ def run_pose2sim_kinematics(trc_path: Path, output_dir: Path,
     output_dir = Path(output_dir).resolve()
 
     # Find Python with OpenSim + Pose2Sim
-    POSE2SIM_PYTHON = r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
     if not Path(POSE2SIM_PYTHON).exists():
         # Try current env
         try:
@@ -228,6 +250,9 @@ def run_pose2sim_kinematics(trc_path: Path, output_dir: Path,
             print("  ERROR: Cannot find Pose2Sim/OpenSim environment")
             return None
     print(f"  Using: {POSE2SIM_PYTHON}")
+
+    # Check for Pose2Sim marker bug (auto-fixes if detected)
+    _check_pose2sim_marker_bug(POSE2SIM_PYTHON)
 
     # Pose2Sim expects TRC in {project_dir}/pose-3d/
     pose3d_dir = output_dir / "pose-3d"
@@ -409,7 +434,7 @@ def rerun_ik_with_pelvis_regularization(output_dir: Path, trc_path: Path):
     tree.write(str(modified_setup), xml_declaration=True, encoding='UTF-8')
 
     # Run pass 2 IK
-    POSE2SIM_PYTHON = r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
     ik_script = f'''
 import opensim
 tool = opensim.InverseKinematicsTool(r"{modified_setup}")
@@ -525,12 +550,12 @@ def run_basic_opensim_ik(trc_path: Path, output_dir: Path,
     """Fallback: basic OpenSim IK without Pose2Sim scaling."""
     import subprocess
 
-    POSE2SIM_PYTHON = r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
     trc_path = Path(trc_path).resolve()
     output_dir = Path(output_dir).resolve()
 
     # Find Pose2Sim setup path
-    pose2sim_setup = Path(r"C:\ProgramData\anaconda3\envs\Pose2Sim\Lib\site-packages\Pose2Sim\OpenSim_Setup")
+    pose2sim_setup = Path(r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\Lib\site-packages\Pose2Sim\OpenSim_Setup")
 
     ik_script = '''
 import opensim as osim
