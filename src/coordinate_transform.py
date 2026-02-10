@@ -331,12 +331,15 @@ class CoordinateTransformer:
         return keypoints
 
     def _center_at_pelvis(self, keypoints: np.ndarray) -> np.ndarray:
-        """Center keypoints at pelvis midpoint in XZ plane."""
-        for i in range(keypoints.shape[0]):
-            pelvis = (keypoints[i, self.LEFT_HIP_IDX] +
-                      keypoints[i, self.RIGHT_HIP_IDX]) / 2
-            keypoints[i, :, 0] -= pelvis[0]
-            keypoints[i, :, 2] -= pelvis[2]
+        """Center keypoints at first-frame pelvis midpoint in XZ plane.
+
+        Only subtracts the first frame's pelvis position so that global
+        translation (walking, moving) is preserved across subsequent frames.
+        """
+        first_pelvis = (keypoints[0, self.LEFT_HIP_IDX] +
+                        keypoints[0, self.RIGHT_HIP_IDX]) / 2
+        keypoints[:, :, 0] -= first_pelvis[0]
+        keypoints[:, :, 2] -= first_pelvis[2]
         return keypoints
 
     def _align_to_ground(self, keypoints: np.ndarray) -> np.ndarray:
