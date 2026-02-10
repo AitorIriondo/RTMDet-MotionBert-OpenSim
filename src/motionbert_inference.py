@@ -68,6 +68,11 @@ class MotionBERTLifter:
 
         print(f"  MotionBERT loaded ({sum(p.numel() for p in self.model.parameters()) / 1e6:.1f}M params)")
 
+    # H36M training camera reference values
+    # H36M uses 4 cameras with focal lengths ~1145-1150px on ~1000x1000 images
+    H36M_FOCAL = 1145.0
+    H36M_SCALE = 500.0  # min(1000, 1000) / 2
+
     def lift(
         self,
         keypoints_2d: np.ndarray,
@@ -75,6 +80,7 @@ class MotionBERTLifter:
         image_width: int,
         image_height: int,
         flip_augment: bool = True,
+        focal_length: float = None,
     ) -> np.ndarray:
         """
         Lift 2D keypoints to 3D.
@@ -85,6 +91,9 @@ class MotionBERTLifter:
             image_width: video width in pixels
             image_height: video height in pixels
             flip_augment: use horizontal flip test-time augmentation
+            focal_length: camera focal length in pixels (None = no correction).
+                Corrects for FOV mismatch between the recording camera and
+                H36M training cameras (~1145px on 1000x1000).
 
         Returns:
             keypoints_3d: (T, 17, 3) 3D keypoints in meters (camera coordinate system)
@@ -98,6 +107,15 @@ class MotionBERTLifter:
         scale = min(image_width, image_height) / 2.0
         kpts_norm[..., 0] = (kpts_norm[..., 0] - image_width / 2.0) / scale
         kpts_norm[..., 1] = (kpts_norm[..., 1] - image_height / 2.0) / scale
+
+        # Focal length correction: rescale normalized coords to match H36M
+        # training distribution. A wider FOV camera (lower focal length)
+        # produces normalized coords that are too spread out, causing
+        # MotionBERT to misinterpret depth and produce forward lean.
+        if focal_length is not None:
+            correction = (focal_length / scale) / (self.H36M_FOCAL / self.H36M_SCALE)
+            kpts_norm[..., :2] *= correction
+            print(f"  Focal correction: f={focal_length:.0f}px, factor={correction:.3f}")
 
         # Stack with confidence: (T, 17, 3) = [x_norm, y_norm, confidence]
         kpts_input = np.concatenate([kpts_norm, scores[..., np.newaxis]], axis=-1)

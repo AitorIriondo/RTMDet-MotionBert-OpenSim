@@ -39,6 +39,9 @@ def parse_args():
     parser.add_argument("--device", default="cuda:0", help="Device for MotionBERT (cuda:0 or cpu)")
     parser.add_argument("--pose-model", default="COCO_17", choices=["COCO_17", "COCO_133"],
                         help="Pose model for IK: COCO_17 (14 markers, body only) or COCO_133 (27 markers)")
+    parser.add_argument("--focal-length", type=float, default=None,
+                        help="Camera focal length in pixels (default: auto-estimate from resolution). "
+                             "Corrects forward lean from FOV mismatch with MotionBERT training cameras.")
     return parser.parse_args()
 
 
@@ -87,6 +90,7 @@ def run_hybrid_pipeline(
     person_idx: int,
     device: str,
     pose_model: str = "COCO_17",
+    focal_length: float = None,
 ):
     """Run the hybrid RTMW 2D + MotionBERT 3D pipeline."""
     start_time = time.time()
@@ -113,27 +117,34 @@ def run_hybrid_pipeline(
         print("  ERROR: No 2D keypoints found. Re-run inference with updated run_inference.py.")
         sys.exit(1)
 
-    # Get FPS from metadata
+    # Load inference metadata
     meta_path = json_path.parent / "inference_meta.json"
-    if fps is None:
-        if meta_path.exists():
-            with open(meta_path, 'r') as f:
-                meta = json.load(f)
-            fps = meta.get("fps", 30.0)
-            # Also get image dimensions
-        else:
-            fps = 30.0
-    print(f"  FPS: {fps}")
-
-    # Get image dimensions from metadata
+    meta = {}
     if meta_path.exists():
         with open(meta_path, 'r') as f:
             meta = json.load(f)
-        image_width = meta.get("video_info", {}).get("width", 1920)
-        image_height = meta.get("video_info", {}).get("height", 1080)
-    else:
-        image_width, image_height = 1920, 1080
+
+    if fps is None:
+        fps = meta.get("fps", 30.0)
+    print(f"  FPS: {fps}")
+
+    image_width = meta.get("video_info", {}).get("width", 1920)
+    image_height = meta.get("video_info", {}).get("height", 1080)
     print(f"  Image: {image_width}x{image_height}")
+
+    # Auto-estimate focal length if not provided
+    if focal_length is None:
+        focal_length = meta.get("focal_length_px")
+    if focal_length is None:
+        # Try to extract from source video via ExifTool / MP4 atoms
+        from utils.video_utils import extract_focal_length
+        source_video = meta.get("input_video")
+        if source_video and Path(source_video).exists():
+            focal_length = extract_focal_length(source_video)
+    if focal_length is not None:
+        print(f"  Focal length: {focal_length:.0f}px")
+    else:
+        print("  Focal length: not set (no correction)")
 
     # ---- Step 2: MotionBERT 3D lifting ----
     print("\n[2/7] MotionBERT 3D body lifting...")
@@ -154,6 +165,7 @@ def run_hybrid_pipeline(
         h36m_2d, h36m_scores,
         image_width=image_width,
         image_height=image_height,
+        focal_length=focal_length,
     )
     print(f"  3D output: {body_3d_h36m.shape}")
 
@@ -1017,7 +1029,16 @@ def main():
     if args.output:
         output_dir = Path(args.output)
     else:
-        output_dir = json_path.parent
+        # Create new timestamped output folder based on source video name
+        from utils.io_utils import get_output_dir
+        meta_path = json_path.parent / "inference_meta.json"
+        if meta_path.exists():
+            with open(meta_path, 'r') as f:
+                _meta = json.load(f)
+            video_name = _meta.get("input_video", str(json_path))
+        else:
+            video_name = str(json_path)
+        output_dir = get_output_dir(video_name)
 
     run_hybrid_pipeline(
         json_path=str(json_path),
@@ -1031,6 +1052,7 @@ def main():
         person_idx=args.person,
         device=args.device,
         pose_model=args.pose_model,
+        focal_length=args.focal_length,
     )
 
 

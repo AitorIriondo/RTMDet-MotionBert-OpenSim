@@ -40,6 +40,14 @@ frames/
 *.glb
 *.sto
 
+# Tools (ExifTool binary, download separately)
+tools/
+
+# Test scripts
+test_*.py
+compare_*.py
+
 # Temporary files
 _run_*.py
 *.log
+nul

@@ -144,19 +144,28 @@ def run_inference(
     with open(json_path, 'w') as f:
         json.dump(all_outputs, f, indent=2)
 
+    # Try to extract focal length from video metadata
+    from utils.video_utils import extract_focal_length
+    focal_length_px = extract_focal_length(str(input_path))
+    if focal_length_px is not None:
+        print(f"  Focal length from metadata: {focal_length_px:.0f}px")
+
     # Save metadata
     meta_path = output_dir / "inference_meta.json"
     elapsed = time.time() - start_time
+    meta = {
+        "input_video": str(input_path),
+        "fps": actual_fps,
+        "num_frames": len(frame_paths),
+        "video_info": video_info,
+        "model_name": model_name,
+        "device": device,
+        "inference_time": elapsed,
+    }
+    if focal_length_px is not None:
+        meta["focal_length_px"] = focal_length_px
     with open(meta_path, 'w') as f:
-        json.dump({
-            "input_video": str(input_path),
-            "fps": actual_fps,
-            "num_frames": len(frame_paths),
-            "video_info": video_info,
-            "model_name": model_name,
-            "device": device,
-            "inference_time": elapsed,
-        }, f, indent=2)
+        json.dump(meta, f, indent=2)
 
     print(f"\n{'='*60}")
     print("Inference Complete!")
