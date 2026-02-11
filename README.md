@@ -44,16 +44,20 @@ Tested on NVIDIA RTX GPU with 1136 frames (37.8 sec video, 1920x1080):
 cd C:\RTMDetMotionBertOpenSim
 conda activate mmpose
 
-# Stage 1: Inference (slow, run once per video)
-python run_inference.py --input videos\aitor_garden_walk.mp4
-
-# Stage 2: Hybrid export (fast, iterate on settings)
-python run_hybrid_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69 --correct-lean
+# Single command (runs both stages)
+python run_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69 --correct-lean
 ```
 
 ## Usage
 
-### Two-Stage Workflow (Recommended)
+### Single Command
+
+Runs inference + export in one go:
+```bash
+python run_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69 --correct-lean
+```
+
+### Two-Stage Workflow (for iterating on export settings)
 
 **Stage 1: Inference** (slow, run once)
 ```bash
@@ -80,6 +84,28 @@ python run_hybrid_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69
 ```
 
 ## Arguments Reference
+
+### run_pipeline.py (combined)
+
+All arguments from both stages. Shared args (`--device`, `--person`) apply to both.
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--input, -i` | Input video file | Required |
+| `--output, -o` | Output directory | Auto |
+| `--device` | Compute device (cuda:0 or cpu) | cuda:0 |
+| `--person` | Person index | 0 |
+| `--fps` | Target FPS for frame extraction | 30.0 |
+| `--model` | Model name override | rtmpose3d |
+| `--height` | Subject height (meters) | 1.75 |
+| `--mass` | Subject mass (kg) | 70.0 |
+| `--smooth` | Smoothing cutoff Hz (0 to disable) | 6.0 |
+| `--skip-ik` | Skip OpenSim IK | false |
+| `--skip-glb` | Skip GLB export | false |
+| `--pose-model` | COCO_17 (22 markers) or COCO_133 (27 markers) | COCO_17 |
+| `--focal-length` | Camera focal length in pixels | Auto |
+| `--correct-lean` | Ground-plane lean correction | false |
+| `--single-level` | Per-frame strict grounding | false |
 
 ### run_inference.py
 
@@ -118,8 +144,7 @@ output_dir/
 ├── inference_meta.json               # Video metadata (FPS, dimensions)
 ├── markers_videoname.trc             # OpenSim marker trajectories (22 markers, meters)
 ├── kinematics/
-│   ├── markers_videoname.osim        # Scaled OpenSim model
-│   ├── markers_videoname_22markers.osim  # Model with eye + hand markers
+│   ├── markers_videoname_22markers.osim  # Scaled OpenSim model (22 markers)
 │   ├── markers_videoname.mot         # Joint angles (40 DOF)
 │   └── *_ik_setup*.xml              # IK solver configuration
 └── markers_videoname.glb             # Animated skeleton (quaternion-native, universal viewers)
@@ -127,7 +152,7 @@ output_dir/
 
 ## Pipeline Stages
 
-1. **Frame Extraction**: Video → JPEG frames at target FPS
+1. **Frame Reading**: Video frames read directly into memory at target FPS
 2. **Person Detection**: RTMDet-m bounding box detection
 3. **2D Pose Estimation**: RTMW3D-Large → 133 COCO-WholeBody 2D keypoints
 4. **COCO-17 to H36M Conversion**: Reformat body joints for MotionBERT
@@ -168,6 +193,7 @@ RTMDet-MotionBert-OpenSim/
 ├── src/                       # Source modules
 ├── utils/                     # Utility functions
 ├── scripts/                   # Blender export script
+├── run_pipeline.py            # Full pipeline (both stages in one command)
 ├── run_inference.py           # Stage 1: RTMW inference
 ├── run_hybrid_pipeline.py     # Stage 2: Hybrid export (recommended)
 ├── run_export.py              # Stage 2: Legacy export (RTMW3D direct)
