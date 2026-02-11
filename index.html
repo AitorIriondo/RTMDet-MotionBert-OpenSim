@@ -156,7 +156,7 @@
         <div class="panel">
             <div class="panel-header">
                 <span>Y-Bot Animation (GLB)</span>
-                <span class="file-info" id="fbx-info">Loading...</span>
+                <span class="file-info" id="glb-info">Loading...</span>
             </div>
             <div class="panel-content">
                 <div id="three-container">
@@ -232,7 +232,7 @@
         const syncIndicator = document.getElementById('sync-indicator');
         const loadingEl = document.getElementById('loading');
         const videoInfo = document.getElementById('video-info');
-        const fbxInfo = document.getElementById('fbx-info');
+        const glbInfo = document.getElementById('glb-info');
 
         // Three.js setup
         let scene, camera, renderer, controls;
@@ -240,7 +240,7 @@
         let isPlaying = false;
         let isLooping = false;
         let duration = 0;
-        let currentFbxFile = '';
+        let currentGlbFile = '';
 
         function initThree() {
             scene = new THREE.Scene();
@@ -359,8 +359,8 @@
                 loadingEl.style.display = 'none';
 
                 const filename = url.split('/').pop();
-                fbxInfo.textContent = filename;
-                currentFbxFile = filename;
+                glbInfo.textContent = filename;
+                currentGlbFile = filename;
 
             } catch (error) {
                 console.error('Error loading model:', error);
@@ -516,7 +516,7 @@
                     }
                 }
 
-                // Use mixer.setTime() - works with all formats (GLB/FBX)
+                // Use mixer.setTime() - works with GLB format
                 // It resets internal time and re-evaluates at the given time
                 mixer.setTime(animationTime);
 

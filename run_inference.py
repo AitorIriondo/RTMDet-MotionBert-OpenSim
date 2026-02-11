@@ -13,7 +13,6 @@ Usage:
 
 Output:
     output_dir/
-    ├── frames/               # Extracted video frames
     ├── video_outputs.json    # RTMPose3D outputs (keypoints_3d, scores, bboxes)
     └── inference_meta.json   # Metadata (fps, timing, video info)
 """
@@ -22,7 +21,6 @@ import argparse
 import json
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -32,7 +30,7 @@ from tqdm import tqdm
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.video_utils import extract_frames, get_video_info
+from utils.video_utils import get_video_info
 from utils.io_utils import load_config, get_output_dir
 
 
@@ -83,16 +81,31 @@ def run_inference(
     print(f"Model: {model_name}")
     print(f"{'='*60}\n")
 
-    # Step 1: Extract frames
-    print("[1/2] Extracting frames...")
+    # Step 1: Open video and compute frame sampling
+    print("[1/2] Reading video...")
     video_info = get_video_info(input_path)
     print(f"  Video: {video_info['width']}x{video_info['height']}, {video_info['fps']:.2f} FPS, {video_info['duration']:.1f}s")
 
-    frames_dir = output_dir / "frames"
-    frame_paths, actual_fps = extract_frames(input_path, str(frames_dir), target_fps=fps)
-    print(f"  Extracted {len(frame_paths)} frames at {actual_fps:.2f} FPS")
+    cap = cv2.VideoCapture(str(input_path))
+    if not cap.isOpened():
+        print(f"Error: Cannot open video: {input_path}")
+        sys.exit(1)
 
-    # Step 2: Run RTMPose3D
+    original_fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Calculate frame interval for target FPS
+    if fps is None or fps >= original_fps:
+        frame_interval = 1
+        actual_fps = original_fps
+    else:
+        frame_interval = round(original_fps / fps)
+        actual_fps = original_fps / frame_interval
+
+    expected_frames = total_frames // frame_interval
+    print(f"  Sampling every {frame_interval} frames → ~{expected_frames} frames at {actual_fps:.2f} FPS")
+
+    # Step 2: Run RTMPose3D (read frames directly from video, no disk I/O)
     print("\n[2/2] Running RTMPose3D inference...")
 
     from src.rtmpose3d_inference import RTMPose3DInference
@@ -102,42 +115,54 @@ def run_inference(
         device=device,
     )
 
-    # Process frames and collect outputs
     all_outputs = []
+    frame_idx = 0
+    processed_idx = 0
 
-    for idx, frame_path in enumerate(tqdm(frame_paths, desc="Processing")):
-        image = cv2.imread(frame_path)
-        if image is None:
-            all_outputs.append({"frame": Path(frame_path).name, "outputs": []})
-            continue
-        # NOTE: cv2.imread returns BGR, which is what RTMPose3D expects.
-        # Do NOT convert to RGB here.
+    pbar = tqdm(total=expected_frames, desc="Processing", unit="frames")
 
-        persons = model.process_frame(image)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-        frame_data = {
-            "frame": Path(frame_path).name,
-            "outputs": [],
-        }
+        if frame_idx % frame_interval == 0:
+            # frame is already BGR from cv2.VideoCapture, which RTMPose3D expects
+            persons = model.process_frame(frame)
 
-        for person in persons:
-            person_data = {
-                "keypoints_3d": person["keypoints_3d"].tolist()
-                    if isinstance(person["keypoints_3d"], np.ndarray)
-                    else person["keypoints_3d"],
-                "keypoints_2d": person["keypoints_2d"].tolist()
-                    if isinstance(person["keypoints_2d"], np.ndarray)
-                    else person["keypoints_2d"],
-                "scores": person["scores"].tolist()
-                    if isinstance(person["scores"], np.ndarray)
-                    else person["scores"],
-                "bbox": person["bbox"].tolist()
-                    if isinstance(person["bbox"], np.ndarray)
-                    else person["bbox"],
+            frame_data = {
+                "frame": f"frame_{processed_idx:06d}",
+                "outputs": [],
             }
-            frame_data["outputs"].append(person_data)
 
-        all_outputs.append(frame_data)
+            for person in persons:
+                person_data = {
+                    "keypoints_3d": person["keypoints_3d"].tolist()
+                        if isinstance(person["keypoints_3d"], np.ndarray)
+                        else person["keypoints_3d"],
+                    "keypoints_2d": person["keypoints_2d"].tolist()
+                        if isinstance(person["keypoints_2d"], np.ndarray)
+                        else person["keypoints_2d"],
+                    "scores": person["scores"].tolist()
+                        if isinstance(person["scores"], np.ndarray)
+                        else person["scores"],
+                    "bbox": person["bbox"].tolist()
+                        if isinstance(person["bbox"], np.ndarray)
+                        else person["bbox"],
+                }
+                frame_data["outputs"].append(person_data)
+
+            all_outputs.append(frame_data)
+            processed_idx += 1
+            pbar.update(1)
+
+        frame_idx += 1
+
+    pbar.close()
+    cap.release()
+
+    num_frames = processed_idx
+    print(f"  Processed {num_frames} frames")
 
     # Save to JSON
     json_path = output_dir / "video_outputs.json"
@@ -156,7 +181,7 @@ def run_inference(
     meta = {
         "input_video": str(input_path),
         "fps": actual_fps,
-        "num_frames": len(frame_paths),
+        "num_frames": num_frames,
         "video_info": video_info,
         "model_name": model_name,
         "device": device,
@@ -170,8 +195,8 @@ def run_inference(
     print(f"\n{'='*60}")
     print("Inference Complete!")
     print(f"{'='*60}")
-    print(f"Time: {elapsed:.1f}s ({len(frame_paths)/elapsed:.1f} FPS)")
-    print(f"Frames: {len(frame_paths)}")
+    print(f"Time: {elapsed:.1f}s ({num_frames/elapsed:.1f} FPS)")
+    print(f"Frames: {num_frames}")
     print(f"Output: {json_path}")
     print(f"{'='*60}\n")
 

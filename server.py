@@ -21,16 +21,11 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(PROJECT_ROOT), **kwargs)
 
     def do_GET(self):
-        # API: get latest model (prefer GLB over FBX)
+        # API: get latest GLB model
         if self.path == "/api/latest-model":
             glb_files = sorted(OUTPUT_DIR.glob("*.glb"), key=os.path.getmtime)
             if glb_files:
                 latest = glb_files[-1]
-                self.send_json({"file": latest.name})
-                return
-            fbx_files = sorted(OUTPUT_DIR.glob("*.fbx"), key=os.path.getmtime)
-            if fbx_files:
-                latest = fbx_files[-1]
                 self.send_json({"file": latest.name})
             else:
                 self.send_json({"file": None})
@@ -58,15 +53,13 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(404, "Video not found")
             return
 
-        # Serve model files (GLB/FBX) from output dir
+        # Serve GLB model files from output dir
         if self.path.startswith("/output/"):
             filename = unquote(self.path.split("/")[-1])
             file_path = OUTPUT_DIR / filename
             if file_path.exists():
                 if filename.endswith('.glb'):
                     content_type = "model/gltf-binary"
-                elif filename.endswith('.fbx'):
-                    content_type = "application/octet-stream"
                 else:
                     content_type = "application/octet-stream"
                 self.send_response(200)

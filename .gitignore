@@ -36,7 +36,6 @@ frames/
 *.trc
 *.mot
 *.osim
-*.fbx
 *.glb
 *.sto
 

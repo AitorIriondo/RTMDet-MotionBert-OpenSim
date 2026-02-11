@@ -27,14 +27,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Hybrid RTMW 2D + MotionBERT 3D Pipeline")
-    parser.add_argument("--input", "-i", required=True, help="video_outputs.json with 2D + 3D keypoints")
+    parser.add_argument("--input", "-i", required=True,
+                        help="Input video (.mp4) or video_outputs.json. "
+                             "If a video is given, finds the latest inference output automatically.")
     parser.add_argument("--height", type=float, default=1.75, help="Subject height (m)")
     parser.add_argument("--mass", type=float, default=70.0, help="Subject mass (kg)")
     parser.add_argument("--output", "-o", help="Output directory (default: same as input)")
     parser.add_argument("--fps", type=float, help="Override FPS (default: from metadata)")
     parser.add_argument("--smooth", type=float, default=6.0, help="Smoothing cutoff Hz (0=disable)")
     parser.add_argument("--skip-ik", action="store_true", help="Skip OpenSim scaling + IK")
-    parser.add_argument("--skip-fbx", action="store_true", help="Skip FBX export")
+    parser.add_argument("--skip-glb", action="store_true", help="Skip GLB export")
     parser.add_argument("--person", type=int, default=0, help="Person index")
     parser.add_argument("--device", default="cuda:0", help="Device for MotionBERT (cuda:0 or cpu)")
     parser.add_argument("--pose-model", default="COCO_17", choices=["COCO_17", "COCO_133"],
@@ -90,7 +92,7 @@ def run_hybrid_pipeline(
     fps: float,
     smooth_cutoff: float,
     skip_ik: bool,
-    skip_fbx: bool,
+    skip_glb: bool,
     person_idx: int,
     device: str,
     pose_model: str = "COCO_17",
@@ -226,7 +228,7 @@ def run_hybrid_pipeline(
         trc_exporter.export(markers, marker_names, str(trc_path))
         print(f"  TRC: {trc_path}")
 
-        results = {"trc": trc_path, "mot": None, "fbx": None, "glb": None}
+        results = {"trc": trc_path, "mot": None, "glb": None}
 
         # Pose2Sim IK with COCO_17
         if not skip_ik:
@@ -307,7 +309,7 @@ def run_hybrid_pipeline(
         trc_exporter.export(markers, marker_names, str(trc_path))
         print(f"  TRC: {trc_path}")
 
-        results = {"trc": trc_path, "mot": None, "fbx": None, "glb": None}
+        results = {"trc": trc_path, "mot": None, "glb": None}
 
         if not skip_ik:
             print("\nRunning Pose2Sim scaling + IK...")
@@ -328,15 +330,12 @@ def run_hybrid_pipeline(
         else:
             print("\nSkipping IK")
 
-    # FBX + GLB export
-    if not skip_fbx and not skip_ik and results["mot"]:
-        print("\nExporting FBX + GLB...")
-        from run_export import run_fbx_export
-        fbx_path = run_fbx_export(results["mot"], output_dir)
-        results["fbx"] = fbx_path
-        if fbx_path:
-            glb_path = Path(fbx_path).with_suffix('.glb')
-            results["glb"] = glb_path if glb_path.exists() else None
+    # GLB export
+    if not skip_glb and not skip_ik and results["mot"]:
+        print("\nExporting GLB...")
+        from run_export import run_glb_export
+        glb_path = run_glb_export(results["mot"], output_dir)
+        results["glb"] = glb_path
 
     # Summary
     elapsed = time.time() - start_time
@@ -1005,27 +1004,58 @@ def _post_smooth_mot(mot_path: Path, fps: float) -> Path:
     return mot_path
 
 
+def _find_inference_output(video_path: Path) -> Path:
+    """Find the latest inference output folder for a given video.
+
+    Looks for output_*_{video_stem}/video_outputs.json in the project root,
+    sorted by modification time (newest first).
+    """
+    video_stem = video_path.stem
+    candidates = sorted(
+        PROJECT_ROOT.glob(f"output_*_{video_stem}/video_outputs.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if candidates:
+        return candidates[0]
+    return None
+
+
 def main():
     args = parse_args()
 
-    json_path = Path(args.input)
+    input_path = Path(args.input)
+    if not input_path.exists():
+        print(f"Error: Input not found: {input_path}")
+        sys.exit(1)
+
+    # Accept either a video file or video_outputs.json
+    if input_path.suffix.lower() in (".mp4", ".avi", ".mov", ".mkv"):
+        json_path = _find_inference_output(input_path)
+        if json_path is None:
+            print(f"Error: No inference output found for {input_path.name}")
+            print(f"  Run inference first: python run_inference.py --input \"{input_path}\"")
+            sys.exit(1)
+        print(f"Found inference output: {json_path.parent.name}/")
+    elif input_path.name == "video_outputs.json":
+        json_path = input_path
+    else:
+        # Try as a directory containing video_outputs.json
+        candidate = input_path / "video_outputs.json"
+        if candidate.exists():
+            json_path = candidate
+        else:
+            json_path = input_path  # let it fail below with a clear error
+
     if not json_path.exists():
-        print(f"Error: Input not found: {json_path}")
+        print(f"Error: video_outputs.json not found: {json_path}")
         sys.exit(1)
 
     if args.output:
         output_dir = Path(args.output)
     else:
-        # Create new timestamped output folder based on source video name
-        from utils.io_utils import get_output_dir
-        meta_path = json_path.parent / "inference_meta.json"
-        if meta_path.exists():
-            with open(meta_path, 'r') as f:
-                _meta = json.load(f)
-            video_name = _meta.get("input_video", str(json_path))
-        else:
-            video_name = str(json_path)
-        output_dir = get_output_dir(video_name)
+        # Output to the same folder as video_outputs.json
+        output_dir = json_path.parent
 
     run_hybrid_pipeline(
         json_path=str(json_path),
@@ -1035,7 +1065,7 @@ def main():
         fps=args.fps,
         smooth_cutoff=args.smooth,
         skip_ik=args.skip_ik,
-        skip_fbx=args.skip_fbx,
+        skip_glb=args.skip_glb,
         person_idx=args.person,
         device=args.device,
         pose_model=args.pose_model,

@@ -1,6 +1,6 @@
 # How to Run RTMToOpenSim
 
-Monocular video to OpenSim motion data (TRC / MOT / GLB / FBX).
+Monocular video to OpenSim motion data (TRC / MOT / GLB).
 
 ---
 
@@ -32,7 +32,7 @@ Monocular video to OpenSim motion data (TRC / MOT / GLB / FBX).
 |----------|---------|----------|
 | Anaconda / Miniconda | any | Yes |
 | CUDA Toolkit | 12.1+ | Yes (for GPU) |
-| Blender | 5.0+ | Optional (GLB/FBX export only) |
+| Blender | 5.0+ | Optional (GLB export only) |
 
 ---
 
@@ -81,7 +81,7 @@ pip install mmpose>=1.0.0
 ### 4. Install project dependencies
 
 ```bash
-cd C:\RTMToOpenSim
+cd C:\RTMDetMotionBertOpenSim
 pip install -r requirements.txt
 ```
 
@@ -136,14 +136,14 @@ Switch back to the main environment:
 conda activate mmpose
 ```
 
-### 9. (Optional) Install Blender for GLB/FBX export
+### 9. (Optional) Install Blender for GLB export
 
 Download and install [Blender 5.0+](https://www.blender.org/download/) to the default location:
 ```
 C:\Program Files\Blender Foundation\Blender 5.0\blender.exe
 ```
 
-The pipeline will skip GLB/FBX export automatically if Blender is not found.
+The pipeline will skip GLB export automatically if Blender is not found.
 
 ---
 
@@ -190,32 +190,40 @@ The pipeline is split into two stages so you can run the slow inference once, th
 #### Stage 1: Inference (slow, run once per video)
 
 ```bash
-python run_inference.py --input path/to/video.mp4
+cd C:\RTMDetMotionBertOpenSim
+conda activate mmpose
+
+python run_inference.py --input videos\aitor_garden_walk.mp4
 ```
 
 This creates:
 ```
-test_output_<video_name>/
-    frames/                   # Extracted video frames
+output_YYYYMMDD_HHMMSS_aitor_garden_walk/
     video_outputs.json        # 2D + 3D keypoints per frame
     inference_meta.json       # Video metadata (FPS, resolution)
 ```
 
+Frames are extracted temporarily during inference and cleaned up automatically.
+
 #### Stage 2: Hybrid export (fast, iterate settings)
 
+Pass the same video path — the pipeline auto-discovers the latest inference output:
 ```bash
-python run_hybrid_pipeline.py ^
-    --input test_output_<video_name>/video_outputs.json ^
-    --height 1.69
+python run_hybrid_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69 --correct-lean
 ```
 
-This creates TRC, MOT, GLB, and FBX output files (see [Output Files](#output-files)).
+Or point directly to the inference output:
+```bash
+python run_hybrid_pipeline.py --input output_*_aitor_garden_walk/video_outputs.json --height 1.69
+```
+
+This creates TRC, MOT, and GLB output files in the same inference output folder (see [Output Files](#output-files)).
 
 ### Quick one-liner
 
 ```bash
-python run_inference.py --input video.mp4 && ^
-python run_hybrid_pipeline.py --input test_output_video/video_outputs.json --height 1.69
+python run_inference.py --input videos\aitor_garden_walk.mp4 && ^
+python run_hybrid_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69 --correct-lean
 ```
 
 ---
@@ -243,14 +251,14 @@ python run_inference.py [OPTIONS]
 **Examples:**
 
 ```bash
-# Basic usage
-python run_inference.py --input walk.mp4
+# Basic usage (video in project's videos/ folder)
+python run_inference.py --input videos\aitor_garden_walk.mp4
 
 # Custom output directory, CPU mode
-python run_inference.py --input walk.mp4 --output my_output --device cpu
+python run_inference.py --input videos\aitor_garden_walk.mp4 --output my_output --device cpu
 
 # Extract at 15 FPS instead of 30
-python run_inference.py --input walk.mp4 --fps 15
+python run_inference.py --input videos\aitor_garden_walk.mp4 --fps 15
 ```
 
 ---
@@ -265,14 +273,15 @@ python run_hybrid_pipeline.py [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--input`, `-i` | **required** | Path to `video_outputs.json` from Stage 1 |
+| `--input`, `-i` | **required** | Input video (.mp4) or `video_outputs.json`. If a video is given, finds the latest inference output automatically |
 | `--output`, `-o` | same as input dir | Output directory |
 | `--height` | `1.75` | Subject height in meters |
 | `--mass` | `70.0` | Subject mass in kilograms |
 | `--fps` | from metadata | Override FPS. Default: read from `inference_meta.json` |
 | `--smooth` | `6.0` | Butterworth low-pass filter cutoff in Hz. `0` = disable smoothing |
 | `--skip-ik` | false | Skip OpenSim scaling + inverse kinematics. Outputs TRC only |
-| `--skip-fbx` | false | Skip Blender GLB/FBX export |
+| `--skip-glb` | false | Skip Blender GLB export |
+| `--correct-lean` | false | Ground-plane lean correction from foot contacts |
 | `--person` | `0` | Person index (0 = first person) |
 | `--device` | `cuda:0` | Device for MotionBERT inference. Use `cpu` if no GPU |
 | `--pose-model` | `COCO_17` | Pose model for IK. `COCO_17` = 22 markers (recommended), `COCO_133` = 27 markers |
@@ -280,45 +289,51 @@ python run_hybrid_pipeline.py [OPTIONS]
 **Examples:**
 
 ```bash
-# Standard usage with subject measurements
+# Standard usage with subject measurements (auto-discovers inference output)
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
-    --mass 65
+    --mass 65 ^
+    --correct-lean
+
+# Or pass inference output directly
+python run_hybrid_pipeline.py ^
+    --input output_*_aitor_garden_walk/video_outputs.json ^
+    --height 1.69
 
 # Output to a specific directory
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
     --output my_results
 
 # Skip IK (TRC only, for debugging markers)
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
     --skip-ik
 
 # Stronger smoothing (3 Hz) for noisy video
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
     --smooth 3.0
 
 # No smoothing
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
     --smooth 0
 
 # CPU only (no GPU)
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
     --device cpu
 
 # COCO_133 mode (27 markers, includes projected hands/feet/face)
 python run_hybrid_pipeline.py ^
-    --input test_output/video_outputs.json ^
+    --input videos\aitor_garden_walk.mp4 ^
     --height 1.69 ^
     --pose-model COCO_133
 ```
@@ -342,7 +357,7 @@ python run_export.py [OPTIONS]
 | `--fps` | from metadata | Override FPS |
 | `--smooth` | `6.0` | Butterworth cutoff Hz (0 = disable) |
 | `--skip-ik` | false | Skip OpenSim IK |
-| `--skip-fbx` | false | Skip GLB/FBX export |
+| `--skip-glb` | false | Skip GLB export |
 | `--person` | `0` | Person index |
 
 ---
@@ -357,7 +372,6 @@ After running both stages, you will have:
 |------|-------------|
 | `video_outputs.json` | Raw RTMW keypoints: 133 COCO-WholeBody 2D + 3D per frame per person |
 | `inference_meta.json` | Video metadata: FPS, resolution, frame count, inference time |
-| `frames/` | Extracted video frames (JPEG) |
 
 ### From Stage 2 (run_hybrid_pipeline.py)
 
@@ -368,8 +382,7 @@ After running both stages, you will have:
 | `kinematics/*_22markers.osim` | Model with extra eye + hand markers for Pass 2 IK |
 | `kinematics/*.mot` | 40 joint angles in degrees (from inverse kinematics) |
 | `kinematics/*_ik_setup*.xml` | IK solver configuration files |
-| `*.glb` | Skeleton animation for universal viewers — Three.js, Unity, Unreal, web (quaternion-native) |
-| `*.fbx` | Skeleton animation for Blender (optional) |
+| `*.glb` | Skeleton animation for universal viewers — Three.js, Unity, Unreal, Blender, web (quaternion-native) |
 
 ### Joint angles in the MOT file
 
@@ -401,7 +414,7 @@ Import the `.glb` file directly. GLB uses quaternions natively, so there are no 
 
 ### Blender
 
-1. Import the `.fbx` or `.glb` file directly
+1. Import the `.glb` file directly
 2. Or open `Import_OS4_Patreon_Aitor_Skely.blend` and load the `.mot` via the included script
 
 ### TRC inspection
@@ -433,12 +446,12 @@ If your Pose2Sim environment is at a different path, the pipeline will try `sys.
 
 ### "Blender not found"
 
-GLB/FBX export requires Blender 5.0+ installed at:
+GLB export requires Blender 5.0+ installed at:
 ```
 C:\Program Files\Blender Foundation\Blender 5.0\blender.exe
 ```
 
-Use `--skip-fbx` to skip GLB/FBX export if Blender is not installed. The TRC and MOT files will still be generated.
+Use `--skip-glb` to skip GLB export if Blender is not installed. The TRC and MOT files will still be generated.
 
 ### CUDA out of memory
 
@@ -503,10 +516,10 @@ Stage 2: run_hybrid_pipeline.py
     +-- Pose2Sim scaling + Pass 1 IK (14 body markers)
     +-- Pass 2 IK (22 markers + pelvis regularization)
     +-- Post-process MOT (zero hip_rotation)
-    +-- GLB/FBX export via Blender (optional)
+    +-- GLB export via Blender (optional)
     |
     v
-TRC + MOT + GLB + FBX
+TRC + MOT + GLB
 ```
 
 ### Coordinate Systems

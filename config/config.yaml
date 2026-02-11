@@ -28,4 +28,4 @@ output:
   directory: null     # Auto-generated if null
   save_trc: true
   save_mot: true
-  save_fbx: false     # Requires Blender 5.0+
+  save_glb: false     # Requires Blender 5.0+

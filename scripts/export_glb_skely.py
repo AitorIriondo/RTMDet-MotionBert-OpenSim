@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Export OpenSim .mot file to FBX and GLB.
+Export OpenSim .mot file to GLB (binary glTF).
 
-Exports both:
-- FBX: works perfectly in Blender
-- GLB (binary glTF): works in all external viewers (Three.js, Unity, Unreal, web)
-
-GLB uses quaternions natively, completely avoiding the Euler angle wrapping
-issue that causes 180-degree snaps in external FBX viewers.
+GLB works in all external viewers (Three.js, Unity, Unreal, web) and uses
+quaternions natively, completely avoiding the Euler angle wrapping issue
+that causes 180-degree snaps in FBX viewers.
 """
 
 import os
@@ -23,9 +20,9 @@ else:
     argv = []
 
 import argparse
-parser = argparse.ArgumentParser(description='Export OpenSim .mot to FBX + GLB')
+parser = argparse.ArgumentParser(description='Export OpenSim .mot to GLB')
 parser.add_argument('--mot', required=True, help='Path to .mot motion file')
-parser.add_argument('--output', '-o', required=True, help='Output file path (writes both .fbx and .glb)')
+parser.add_argument('--output', '-o', required=True, help='Output GLB file path')
 parser.add_argument('--fps', type=int, default=30, help='Target FPS (default: 30)')
 parser.add_argument('--rig', default='metarig_skely', help='Armature name (default: metarig_skely)')
 args = parser.parse_args(argv)
@@ -402,41 +399,6 @@ def bake_to_deform_bones(rig_name, frame_start, frame_end):
     print(f"  Baked and cleared constraints on DEF-bones")
 
 
-def export_fbx(output_path):
-    """Export scene to FBX (for Blender use)."""
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in bpy.data.objects:
-        if obj.type in ['ARMATURE', 'MESH']:
-            obj.select_set(True)
-
-    frame_start = bpy.context.scene.frame_start
-    frame_end = bpy.context.scene.frame_end
-
-    for obj in bpy.data.objects:
-        if obj.type == 'ARMATURE' and obj.animation_data and obj.animation_data.action:
-            action = obj.animation_data.action
-            action.use_frame_range = True
-            action.frame_start = frame_start
-            action.frame_end = frame_end
-
-    bpy.ops.export_scene.fbx(
-        filepath=output_path,
-        use_selection=True,
-        object_types={'ARMATURE', 'MESH'},
-        use_armature_deform_only=False,
-        add_leaf_bones=False,
-        bake_anim=True,
-        bake_anim_use_all_actions=False,
-        bake_anim_use_nla_strips=False,
-        bake_anim_force_startend_keying=True,
-        bake_anim_step=1.0,
-        bake_anim_simplify_factor=0.0,
-    )
-    print(f"  FBX exported: {output_path}")
-
-
 def export_glb(output_path):
     """Export scene to GLB (binary glTF) for universal viewer compatibility.
 
@@ -477,12 +439,10 @@ def main():
     setup_camera()
     apply_motion(args.rig, args.mot, target_fps=args.fps)
 
-    # Export FBX (for Blender) - uses control bones directly
-    print(f"\nExporting FBX...")
-    export_fbx(args.output)
-
-    # Export GLB (for external viewers - quaternion native, no Euler issues)
-    glb_path = os.path.splitext(args.output)[0] + '.glb'
+    # Export GLB (quaternion native, no Euler angle wrapping issues)
+    glb_path = args.output
+    if not glb_path.endswith('.glb'):
+        glb_path = os.path.splitext(glb_path)[0] + '.glb'
     print(f"\nExporting GLB...")
     export_glb(glb_path)
 

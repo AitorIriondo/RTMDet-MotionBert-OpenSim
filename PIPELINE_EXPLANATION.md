@@ -1,6 +1,6 @@
 # RTMToOpenSim Pipeline: Full Technical Explanation
 
-This document explains every stage of the RTMToOpenSim pipeline, from raw video input to final OpenSim joint angles and GLB/FBX animation. It describes what each component does, why it exists, and what data flows between stages.
+This document explains every stage of the RTMToOpenSim pipeline, from raw video input to final OpenSim joint angles and GLB animation. It describes what each component does, why it exists, and what data flows between stages.
 
 ---
 
@@ -10,7 +10,7 @@ The goal is to take an ordinary monocular video of a person and produce biomecha
 
 ```
 Stage 1 (run_inference.py):   Video  -->  2D + 3D keypoints (JSON)
-Stage 2 (run_hybrid_pipeline.py):  JSON  -->  TRC markers  -->  MOT joint angles  -->  GLB/FBX animation
+Stage 2 (run_hybrid_pipeline.py):  JSON  -->  TRC markers  -->  MOT joint angles  -->  GLB animation
 ```
 
 Stage 1 is slow (GPU inference on every frame). Stage 2 is fast (~18 seconds for 1136 frames) and can be re-run with different settings without repeating inference.
@@ -427,19 +427,17 @@ The final `.mot` file contains 40 joint angles per frame:
 
 ---
 
-## Stage 2 final: GLB/FBX Export (Optional)
+## Stage 2 final: GLB Export (Optional)
 
-### 2.20 Blender GLB + FBX Export
+### 2.20 Blender GLB Export
 
-If Blender is installed, the MOT joint angles are applied to a pre-rigged skeleton template and exported in two formats. This runs as a subprocess:
+If Blender is installed, the MOT joint angles are applied to a pre-rigged skeleton template and exported as GLB. This runs as a subprocess:
 
 1. Blender opens in background mode with the skeleton template (`Import_OS4_Patreon_Aitor_Skely.blend`)
-2. A Python script (`scripts/export_fbx_skely.py`) reads the MOT file, maps joint angles to the Blender armature using **quaternion rotations** (avoiding Euler angle wrapping artifacts), and keyframes each frame
-3. The animation is exported as both `.glb` and `.fbx`
+2. A Python script (`scripts/export_glb_skely.py`) reads the MOT file, maps joint angles to the Blender armature using **quaternion rotations** (avoiding Euler angle wrapping artifacts), and keyframes each frame
+3. The animation is exported as `.glb`
 
-**GLB (binary glTF)** is the primary output format. It uses quaternions natively, completely avoiding the 180-degree rotation snaps that can occur in external FBX viewers (Three.js, Unity, Unreal, web viewers). FBX is also exported for Blender compatibility.
-
-Both files can be imported into any 3D application for visualization or game development.
+**GLB (binary glTF)** uses quaternions natively, completely avoiding the 180-degree rotation snaps that can occur with Euler angles. It works in all 3D applications (Three.js, Unity, Unreal, Blender, web viewers).
 
 ---
 
@@ -506,7 +504,7 @@ Final .mot (40 joint angles per frame)
     |
     |  [Blender: apply to skeleton with quaternions, export]
     v
-.glb + .fbx animation (optional)
+.glb animation (optional)
 ```
 
 ---
@@ -543,5 +541,5 @@ Hip rotation (internal/external thigh rotation) needs markers on the thigh or sh
 | 2D + 3D pose estimation | RTMW3D-Large (OpenMMLab) | Apache 2.0 |
 | 2D-to-3D lifting | MotionBERT DSTformer | Apache 2.0 |
 | Model scaling + IK | Pose2Sim + OpenSim 4.5.2 | Apache 2.0 |
-| GLB/FBX export | Blender 5.0 (optional) | GPL (standalone, not linked) |
+| GLB export | Blender 5.0 (optional) | GPL (standalone, not linked) |
 | rtmpose3d wrapper | b-arac/rtmpose3d | Apache 2.0 |

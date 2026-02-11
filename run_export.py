@@ -3,7 +3,7 @@
 Export RTMPose3D Results to OpenSim
 ====================================
 
-Reads video_outputs.json and exports to TRC/MOT/FBX.
+Reads video_outputs.json and exports to TRC/MOT/GLB.
 Uses Pose2Sim's kinematics() for proper model scaling + IK.
 
 Usage:
@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument("--output", "-o", help="Output directory (default: same as input)")
     parser.add_argument("--fps", type=float, help="Override FPS (default: from metadata)")
     parser.add_argument("--skip-ik", action="store_true", help="Skip OpenSim scaling + IK")
-    parser.add_argument("--skip-fbx", action="store_true", help="Skip FBX export")
+    parser.add_argument("--skip-glb", action="store_true", help="Skip GLB export")
     parser.add_argument("--person", type=int, default=0, help="Person index")
     parser.add_argument("--smooth", type=float, default=6.0, help="Smoothing cutoff Hz (0=disable)")
     return parser.parse_args()
@@ -77,11 +77,11 @@ def run_export(
     subject_mass: float,
     fps: float,
     skip_ik: bool,
-    skip_fbx: bool,
+    skip_glb: bool,
     person_idx: int,
     smooth_cutoff: float = 6.0,
 ):
-    """Export RTMPose3D outputs to TRC/MOT/FBX."""
+    """Export RTMPose3D outputs to TRC/MOT/GLB."""
     start_time = time.time()
 
     json_path = Path(json_path)
@@ -162,7 +162,7 @@ def run_export(
     trc_exporter.export(markers, marker_names, str(trc_path))
     print(f"  Saved: {trc_path}")
 
-    results = {"trc": trc_path, "mot": None, "fbx": None}
+    results = {"trc": trc_path, "mot": None, "glb": None}
 
     # Run Pose2Sim scaling + IK
     if not skip_ik:
@@ -179,11 +179,11 @@ def run_export(
     else:
         print("\n[5/5] Skipping scaling + IK")
 
-    # Export FBX
-    if not skip_fbx and not skip_ik and results["mot"]:
-        print("\nExporting FBX...")
-        fbx_path = run_fbx_export(results["mot"], output_dir)
-        results["fbx"] = fbx_path
+    # Export GLB
+    if not skip_glb and not skip_ik and results["mot"]:
+        print("\nExporting GLB...")
+        glb_path = run_glb_export(results["mot"], output_dir)
+        results["glb"] = glb_path
 
     # Summary
     elapsed = time.time() - start_time
@@ -630,22 +630,20 @@ except Exception as e:
     return mot_files[0] if mot_files else None
 
 
-def run_fbx_export(mot_path: Path, output_dir: Path):
-    """Export FBX + GLB using Blender with skeleton template.
+def run_glb_export(mot_path: Path, output_dir: Path):
+    """Export GLB using Blender with skeleton template.
 
-    The Blender script exports both formats:
-    - FBX: works in Blender
-    - GLB (binary glTF): works in all external viewers (quaternion-native)
+    GLB (binary glTF) uses quaternions natively — no Euler angle wrapping issues.
+    Works in all external viewers (Three.js, Unity, Unreal, web).
     """
     import subprocess
 
     BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe"
     blend_template = PROJECT_ROOT / "Import_OS4_Patreon_Aitor_Skely.blend"
-    blender_script = PROJECT_ROOT / "scripts" / "export_fbx_skely.py"
+    blender_script = PROJECT_ROOT / "scripts" / "export_glb_skely.py"
 
     mot_path = Path(mot_path).resolve()
-    fbx_path = output_dir / f"{mot_path.stem.replace('_ik', '')}.fbx"
-    glb_path = fbx_path.with_suffix('.glb')
+    glb_path = output_dir / f"{mot_path.stem.replace('_ik', '')}.glb"
 
     if not Path(BLENDER_PATH).exists():
         print(f"  Blender not found: {BLENDER_PATH}")
@@ -658,16 +656,14 @@ def run_fbx_export(mot_path: Path, output_dir: Path):
     cmd = [
         BLENDER_PATH, "--background", str(blend_template),
         "--python", str(blender_script),
-        "--", "--mot", str(mot_path), "--output", str(fbx_path),
+        "--", "--mot", str(mot_path), "--output", str(glb_path),
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode == 0:
-        print(f"  FBX: {fbx_path}")
-        if glb_path.exists():
-            print(f"  GLB: {glb_path}")
-        return fbx_path
+        print(f"  GLB: {glb_path}")
+        return glb_path
     else:
         if result.stderr:
             for line in result.stderr.split('\n'):
@@ -696,7 +692,7 @@ def main():
         subject_mass=args.mass,
         fps=args.fps,
         skip_ik=args.skip_ik,
-        skip_fbx=args.skip_fbx,
+        skip_glb=args.skip_glb,
         person_idx=args.person,
         smooth_cutoff=args.smooth,
     )
