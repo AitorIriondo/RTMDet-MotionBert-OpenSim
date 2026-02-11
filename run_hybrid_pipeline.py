@@ -42,6 +42,10 @@ def parse_args():
     parser.add_argument("--focal-length", type=float, default=None,
                         help="Camera focal length in pixels (default: auto-estimate from resolution). "
                              "Corrects forward lean from FOV mismatch with MotionBERT training cameras.")
+    parser.add_argument("--correct-lean", action="store_true",
+                        help="Correct forward lean using ground-plane estimation from foot contacts. "
+                             "Fits a plane to 3D foot positions during stance phases and rotates "
+                             "the skeleton to make the ground horizontal.")
     return parser.parse_args()
 
 
@@ -91,6 +95,7 @@ def run_hybrid_pipeline(
     device: str,
     pose_model: str = "COCO_17",
     focal_length: float = None,
+    correct_lean: bool = False,
 ):
     """Run the hybrid RTMW 2D + MotionBERT 3D pipeline."""
     start_time = time.time()
@@ -203,6 +208,8 @@ def run_hybrid_pipeline(
         markers, marker_names = _extract_coco17_markers(
             body_3d_coco17, subject_height,
             extra_markers_h36m=extra_markers,
+            correct_lean=correct_lean,
+            fps=fps,
         )
         print(f"  {len(marker_names)} markers: {', '.join(marker_names)}")
 
@@ -279,7 +286,8 @@ def run_hybrid_pipeline(
             keypoints_133,
             center_pelvis=True,
             align_to_ground=True,
-            correct_lean=False,
+            correct_lean=correct_lean,
+            fps=fps,
         )
         print("  Transform: H36M camera -> OpenSim")
 
@@ -347,6 +355,8 @@ def run_hybrid_pipeline(
 def _extract_coco17_markers(
     body_3d_coco17: np.ndarray, subject_height: float,
     extra_markers_h36m: np.ndarray = None,
+    correct_lean: bool = False,
+    fps: float = 30.0,
 ) -> tuple:
     """
     Extract Pose2Sim COCO_17 markers from COCO-17 body 3D.
@@ -362,6 +372,8 @@ def _extract_coco17_markers(
         subject_height: Subject height in meters
         extra_markers_h36m: (T, 8, 3) projected markers in H36M camera coords
             [LEye, REye, LThumb, LIndex, LPinky, RThumb, RIndex, RPinky]
+        correct_lean: Correct forward lean via ground-plane estimation
+        fps: Video frame rate (needed for foot velocity computation)
 
     Returns:
         markers: (T, 14, 3) or (T, 22, 3) markers in OpenSim coords (meters)
@@ -401,6 +413,35 @@ def _extract_coco17_markers(
         if extra_transformed is not None:
             extra_transformed *= scale
         print(f"  Scale: avg nose-ankle={avg_h*scale:.3f}m, factor={scale:.3f}")
+
+    # Ground-plane lean correction (after scaling, before centering)
+    if correct_lean:
+        ct = CoordinateTransformer(subject_height=subject_height, units="m")
+        # COCO-17 only has ankles as foot keypoints (indices 15, 16)
+        foot_indices = {"left": [15], "right": [16]}
+        # Detect contacts and compute rotation from body keypoints
+        contacts = ct._detect_ground_contacts(transformed, foot_indices, fps, 0.3)
+        plane = ct._fit_ground_plane(contacts) if len(contacts) >= 10 else None
+        if plane is not None:
+            normal, centroid = plane
+            R = ct._compute_ground_rotation(normal)
+            total_angle = np.degrees(np.arccos(np.clip(
+                np.dot(normal, np.array([0, 1, 0])), -1, 1)))
+            sagittal = np.degrees(np.arctan2(normal[0], normal[1]))
+            frontal = np.degrees(np.arctan2(normal[2], normal[1]))
+            if total_angle >= 0.5:
+                print(f"  Ground-plane correction: {total_angle:.1f}° "
+                      f"(sagittal={sagittal:.1f}°, frontal={frontal:.1f}°, "
+                      f"{len(contacts)} contact points)")
+                pelvis_all = (transformed[:, 11] + transformed[:, 12]) / 2
+                pelvis_center = np.mean(pelvis_all, axis=0)
+                transformed -= pelvis_center
+                transformed = transformed @ R.T
+                transformed += pelvis_center
+                if extra_transformed is not None:
+                    extra_transformed -= pelvis_center
+                    extra_transformed = extra_transformed @ R.T
+                    extra_transformed += pelvis_center
 
     # Center at FIRST FRAME pelvis (preserves global translation)
     first_pelvis = (transformed[0, 11] + transformed[0, 12]) / 2
@@ -659,60 +700,6 @@ def _normalize_h36m_bones(body_3d: np.ndarray) -> np.ndarray:
 
     return result
 
-
-def _correct_lean_h36m(body_3d: np.ndarray) -> np.ndarray:
-    """
-    Correct systematic forward/backward lean in H36M coordinates.
-
-    Measures median spine angle (hip→thorax) in YZ plane and rotates
-    around X axis to make the spine vertical. This fixes the constant
-    forward lean that MotionBERT produces from camera angle.
-
-    H36M camera coords: X=right, Y=down, Z=forward.
-    Vertical up = -Y direction.
-    """
-    H36M_HIP = 0
-    H36M_THORAX = 8
-
-    result = body_3d.copy()
-    T = result.shape[0]
-
-    # Measure spine lean angle in YZ plane per frame
-    lean_angles = []
-    for t in range(T):
-        spine = result[t, H36M_THORAX] - result[t, H36M_HIP]
-        spine_y, spine_z = spine[1], spine[2]
-        length_yz = np.sqrt(spine_y**2 + spine_z**2)
-        if length_yz > 0.01:
-            # Angle from -Y axis (vertical up): atan2(Z, -Y)
-            lean = np.degrees(np.arctan2(spine_z, -spine_y))
-            lean_angles.append(lean)
-
-    if not lean_angles:
-        return result
-
-    median_lean = float(np.median(lean_angles))
-    print(f"  Lean correction (H36M): {median_lean:.1f}°")
-
-    if abs(median_lean) < 0.5:
-        return result
-
-    # Rotation around X axis by -lean to correct
-    rad = np.radians(-median_lean)
-    cos_a, sin_a = np.cos(rad), np.sin(rad)
-    rx = np.array([
-        [1, 0, 0],
-        [0, cos_a, -sin_a],
-        [0, sin_a, cos_a],
-    ])
-
-    for t in range(T):
-        hip = result[t, H36M_HIP].copy()
-        result[t] -= hip
-        result[t] = result[t] @ rx.T
-        result[t] += hip
-
-    return result
 
 
 def _smooth_h36m_body(body_3d: np.ndarray, fps: float, cutoff: float = 6.0) -> np.ndarray:
@@ -1053,6 +1040,7 @@ def main():
         device=args.device,
         pose_model=args.pose_model,
         focal_length=args.focal_length,
+        correct_lean=args.correct_lean,
     )
 
 

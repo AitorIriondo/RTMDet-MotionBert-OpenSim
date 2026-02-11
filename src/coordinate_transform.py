@@ -19,9 +19,10 @@ OpenSim (Biomechanical world):
     - Z: Right (lateral)
 """
 
-from typing import Optional
+from typing import Dict, List, Optional
 
 import numpy as np
+from scipy.ndimage import uniform_filter1d
 
 
 class CoordinateTransformer:
@@ -151,7 +152,9 @@ class CoordinateTransformer:
         keypoints_3d: np.ndarray,
         center_pelvis: bool = True,
         align_to_ground: bool = True,
-        correct_lean: bool = True,
+        correct_lean: bool = False,
+        fps: float = 30.0,
+        foot_indices: Optional[Dict[str, List[int]]] = None,
     ) -> np.ndarray:
         """
         Transform keypoints from MotionBERT H36M camera coords to OpenSim.
@@ -159,7 +162,7 @@ class CoordinateTransformer:
         Pipeline:
         1. Rotate axes (H36M camera -> OpenSim)
         2. Scale to subject height
-        3. Correct forward lean (camera angle creates systematic tilt)
+        3. Correct forward lean via ground-plane estimation (optional)
         4. Center at pelvis (XZ plane)
         5. Align feet to ground (Y=0)
 
@@ -167,7 +170,10 @@ class CoordinateTransformer:
             keypoints_3d: (N, K, 3) in H36M camera coords
             center_pelvis: Center at pelvis in XZ plane
             align_to_ground: Align feet to Y=0
-            correct_lean: Correct systematic forward/backward lean
+            correct_lean: Correct lean using ground-plane from foot contacts
+            fps: Video frame rate (needed for foot velocity computation)
+            foot_indices: Dict with 'left' and 'right' keypoint index lists.
+                Defaults to COCO-133 feet (ankles + toes + heels).
 
         Returns:
             Transformed keypoints in OpenSim coordinates
@@ -185,9 +191,11 @@ class CoordinateTransformer:
         # Scale to subject height
         transformed = self._scale_to_subject(transformed)
 
-        # Correct forward lean from camera angle
+        # Correct lean via ground-plane estimation from foot contacts
         if correct_lean:
-            transformed = self._correct_forward_lean(transformed)
+            transformed = self._correct_ground_plane_lean(
+                transformed, fps=fps, foot_indices=foot_indices,
+            )
 
         # Center at pelvis
         if center_pelvis:
@@ -303,6 +311,220 @@ class CoordinateTransformer:
             return float(np.median(angles))
         return 0.0
 
+    # ---- Ground-plane lean correction (foot-contact based) ----
+
+    # Default foot keypoint indices (COCO-WholeBody 133)
+    _DEFAULT_FOOT_INDICES = {
+        "left": [15, 17, 18, 19],   # LAnkle, LBigToe, LSmallToe, LHeel
+        "right": [16, 20, 21, 22],  # RAnkle, RBigToe, RSmallToe, RHeel
+    }
+
+    def _correct_ground_plane_lean(
+        self,
+        keypoints: np.ndarray,
+        fps: float = 30.0,
+        foot_indices: Optional[Dict[str, List[int]]] = None,
+        velocity_threshold: float = 0.3,
+        max_correction_deg: float = 15.0,
+    ) -> np.ndarray:
+        """Correct systematic lean by fitting a ground plane to foot contacts.
+
+        Detects stance phases via foot velocity thresholding, fits a plane
+        to the 3D foot positions during stance, and rotates the entire
+        skeleton so the ground plane becomes horizontal (Y-normal).
+
+        Args:
+            keypoints: (T, K, 3) in OpenSim coordinates (X=fwd, Y=up, Z=right)
+            fps: Video frame rate for velocity computation
+            foot_indices: Dict with 'left'/'right' keypoint index lists.
+                Defaults to COCO-133 feet.
+            velocity_threshold: Max foot speed (m/s) to count as stance
+            max_correction_deg: Safety clamp for correction angle
+
+        Returns:
+            Corrected keypoints
+        """
+        T = keypoints.shape[0]
+        if T < 30:
+            print("  Ground-plane correction: skipped (< 30 frames)")
+            return keypoints
+
+        if foot_indices is None:
+            foot_indices = self._DEFAULT_FOOT_INDICES
+
+        # Step 1: Detect ground contacts
+        contact_points = self._detect_ground_contacts(
+            keypoints, foot_indices, fps, velocity_threshold,
+        )
+
+        if len(contact_points) < 10:
+            print(f"  Ground-plane correction: skipped ({len(contact_points)} contact points, need ≥10)")
+            return keypoints
+
+        # Step 2: Fit ground plane
+        result = self._fit_ground_plane(contact_points)
+        if result is None:
+            print("  Ground-plane correction: plane fit failed")
+            return keypoints
+        normal, centroid = result
+
+        # Decompose into sagittal and frontal angles for diagnostics
+        sagittal_deg = np.degrees(np.arctan2(normal[0], normal[1]))
+        frontal_deg = np.degrees(np.arctan2(normal[2], normal[1]))
+
+        # Step 3: Compute rotation
+        R = self._compute_ground_rotation(normal, max_correction_deg)
+
+        total_angle = np.degrees(np.arccos(np.clip(
+            np.dot(normal, np.array([0, 1, 0])), -1, 1
+        )))
+
+        if total_angle < 0.5:
+            print(f"  Ground-plane correction: {total_angle:.1f}° (below threshold, skipping)")
+            return keypoints
+
+        print(f"  Ground-plane correction: {total_angle:.1f}° "
+              f"(sagittal={sagittal_deg:.1f}°, frontal={frontal_deg:.1f}°, "
+              f"{len(contact_points)} contact points)")
+
+        # Step 4: Apply rotation around global pelvis center
+        pelvis_all = (keypoints[:, self.LEFT_HIP_IDX] +
+                      keypoints[:, self.RIGHT_HIP_IDX]) / 2  # (T, 3)
+        pelvis_center = np.mean(pelvis_all, axis=0)  # (3,)
+
+        corrected = keypoints.copy()
+        corrected -= pelvis_center
+        # Apply rotation: (T, K, 3) @ R.T -> each point rotated
+        corrected = corrected @ R.T
+        corrected += pelvis_center
+
+        return corrected
+
+    def _detect_ground_contacts(
+        self,
+        keypoints: np.ndarray,
+        foot_indices: Dict[str, List[int]],
+        fps: float,
+        velocity_threshold: float,
+    ) -> np.ndarray:
+        """Detect stance frames and collect foot contact positions.
+
+        For each foot, computes the centroid velocity across frames.
+        Frames below the velocity threshold (after smoothing) are stance.
+        Returns all foot keypoint positions during stance.
+
+        Returns:
+            (M, 3) array of ground contact positions
+        """
+        T = keypoints.shape[0]
+        contact_points = []
+
+        for side, indices in foot_indices.items():
+            # Foot centroid per frame
+            foot_pos = keypoints[:, indices, :].mean(axis=1)  # (T, 3)
+
+            # Velocity in m/s (frame-to-frame displacement * fps)
+            velocity = np.zeros(T)
+            velocity[1:] = np.linalg.norm(np.diff(foot_pos, axis=0), axis=1) * fps
+
+            # Smooth velocity (5-frame window)
+            velocity = uniform_filter1d(velocity, size=5)
+
+            # Stance mask: low velocity
+            stance = velocity < velocity_threshold
+
+            # Require ≥3 consecutive stance frames (simple erosion+dilation)
+            # Erosion: must have neighbors also in stance
+            eroded = np.zeros_like(stance)
+            for i in range(1, T - 1):
+                eroded[i] = stance[i - 1] and stance[i] and stance[i + 1]
+            # Dilation: expand back by 1
+            dilated = np.zeros_like(eroded)
+            for i in range(T):
+                if eroded[i]:
+                    dilated[i] = True
+                    if i > 0:
+                        dilated[i - 1] = True
+                    if i < T - 1:
+                        dilated[i + 1] = True
+            stance = dilated
+
+            n_stance = np.sum(stance)
+
+            # Collect foot positions during stance
+            for frame_idx in np.where(stance)[0]:
+                for kpt_idx in indices:
+                    contact_points.append(keypoints[frame_idx, kpt_idx])
+
+        if len(contact_points) == 0:
+            return np.empty((0, 3))
+
+        return np.array(contact_points)
+
+    @staticmethod
+    def _fit_ground_plane(contact_points: np.ndarray):
+        """Fit a plane to 3D contact points using SVD.
+
+        Returns (normal, centroid) where normal points upward (Y > 0),
+        or None if the fit fails.
+        """
+        if len(contact_points) < 10:
+            return None
+
+        centroid = contact_points.mean(axis=0)
+        centered = contact_points - centroid
+
+        try:
+            _, S, Vt = np.linalg.svd(centered, full_matrices=False)
+        except np.linalg.LinAlgError:
+            return None
+
+        # Normal = direction of smallest variance
+        normal = Vt[2]
+
+        # Orient upward (Y > 0 in OpenSim)
+        if normal[1] < 0:
+            normal = -normal
+
+        return normal, centroid
+
+    @staticmethod
+    def _compute_ground_rotation(
+        normal: np.ndarray, max_angle_deg: float = 15.0
+    ) -> np.ndarray:
+        """Compute rotation matrix to align ground normal with Y-up.
+
+        Uses Rodrigues' formula. Clamps to max_angle_deg for safety.
+
+        Returns:
+            (3, 3) rotation matrix
+        """
+        target = np.array([0.0, 1.0, 0.0])
+        axis = np.cross(normal, target)
+        sin_angle = np.linalg.norm(axis)
+        cos_angle = np.dot(normal, target)
+
+        if sin_angle < 1e-6:
+            return np.eye(3)
+
+        axis = axis / sin_angle
+        angle = np.arctan2(sin_angle, cos_angle)
+
+        # Safety clamp
+        if np.degrees(angle) > max_angle_deg:
+            print(f"  WARNING: ground tilt {np.degrees(angle):.1f}° exceeds "
+                  f"max {max_angle_deg}°, clamping")
+            angle = np.radians(max_angle_deg)
+
+        # Rodrigues formula: R = I + sin(a)*K + (1-cos(a))*K^2
+        K = np.array([
+            [0, -axis[2], axis[1]],
+            [axis[2], 0, -axis[0]],
+            [-axis[1], axis[0], 0],
+        ])
+        R = np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * (K @ K)
+        return R
+
     def _compress_depth(
         self, keypoints: np.ndarray, factor: float
     ) -> np.ndarray:
@@ -363,7 +585,6 @@ class CoordinateTransformer:
 
         # Smooth the ground reference (15-frame window ≈ 0.5s at 30fps)
         if N > 15:
-            from scipy.ndimage import uniform_filter1d
             ground_ref = uniform_filter1d(min_foot_y, size=15)
         else:
             ground_ref = min_foot_y
