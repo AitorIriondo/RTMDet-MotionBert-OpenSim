@@ -106,6 +106,7 @@ python run_hybrid_pipeline.py --input videos\aitor_garden_walk.mp4 --height 1.69
 | `--skip-ik` | Skip OpenSim inverse kinematics | false |
 | `--skip-glb` | Skip GLB export | false |
 | `--correct-lean` | Ground-plane lean correction from foot contacts | false |
+| `--single-level` | Per-frame strict grounding (lowest foot = 0 every frame) | false |
 | `--person` | Person index | 0 |
 | `--fps` | Override FPS (default: from metadata) | Auto |
 

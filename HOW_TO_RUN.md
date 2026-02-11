@@ -282,6 +282,7 @@ python run_hybrid_pipeline.py [OPTIONS]
 | `--skip-ik` | false | Skip OpenSim scaling + inverse kinematics. Outputs TRC only |
 | `--skip-glb` | false | Skip Blender GLB export |
 | `--correct-lean` | false | Ground-plane lean correction from foot contacts |
+| `--single-level` | false | Per-frame strict grounding: lowest foot = Y=0 every frame |
 | `--person` | `0` | Person index (0 = first person) |
 | `--device` | `cuda:0` | Device for MotionBERT inference. Use `cpu` if no GPU |
 | `--pose-model` | `COCO_17` | Pose model for IK. `COCO_17` = 22 markers (recommended), `COCO_133` = 27 markers |

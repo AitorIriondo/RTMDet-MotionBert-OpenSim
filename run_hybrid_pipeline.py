@@ -48,6 +48,9 @@ def parse_args():
                         help="Correct forward lean using ground-plane estimation from foot contacts. "
                              "Fits a plane to 3D foot positions during stance phases and rotates "
                              "the skeleton to make the ground horizontal.")
+    parser.add_argument("--single-level", action="store_true",
+                        help="Per-frame strict grounding: lowest foot = Y=0 every frame. "
+                             "Removes all vertical translation (walking on perfectly flat ground).")
     return parser.parse_args()
 
 
@@ -98,6 +101,7 @@ def run_hybrid_pipeline(
     pose_model: str = "COCO_17",
     focal_length: float = None,
     correct_lean: bool = False,
+    single_level: bool = False,
 ):
     """Run the hybrid RTMW 2D + MotionBERT 3D pipeline."""
     start_time = time.time()
@@ -212,6 +216,7 @@ def run_hybrid_pipeline(
             extra_markers_h36m=extra_markers,
             correct_lean=correct_lean,
             fps=fps,
+            single_level=single_level,
         )
         print(f"  {len(marker_names)} markers: {', '.join(marker_names)}")
 
@@ -290,6 +295,7 @@ def run_hybrid_pipeline(
             align_to_ground=True,
             correct_lean=correct_lean,
             fps=fps,
+            single_level=single_level,
         )
         print("  Transform: H36M camera -> OpenSim")
 
@@ -356,6 +362,7 @@ def _extract_coco17_markers(
     extra_markers_h36m: np.ndarray = None,
     correct_lean: bool = False,
     fps: float = 30.0,
+    single_level: bool = False,
 ) -> tuple:
     """
     Extract Pose2Sim COCO_17 markers from COCO-17 body 3D.
@@ -451,13 +458,21 @@ def _extract_coco17_markers(
         extra_transformed[:, :, 2] -= first_pelvis[2]
 
     # Align to ground using ankles (Y axis in OpenSim = up)
+    # COCO-17 only has ankle markers (not heels/toes), so we apply an offset
+    # when single_level is True to account for the ankle-to-sole distance.
+    ANKLE_TO_SOLE = 0.08  # meters — constant offset from ankle joint to foot sole
     ankle_min_y = np.zeros(T)
     for i in range(T):
         ankle_min_y[i] = min(transformed[i, 15, 1], transformed[i, 16, 1])
-    if T > 15:
-        ground_ref = uniform_filter1d(ankle_min_y, size=15)
+    if single_level:
+        # Per-frame strict grounding: foot sole = Y=0 every frame
+        ground_ref = ankle_min_y - ANKLE_TO_SOLE
     else:
-        ground_ref = ankle_min_y
+        # Smoothed ground reference (15-frame window ≈ 0.5s at 30fps)
+        if T > 15:
+            ground_ref = uniform_filter1d(ankle_min_y, size=15)
+        else:
+            ground_ref = ankle_min_y
     for i in range(T):
         transformed[i, :, 1] -= ground_ref[i]
         if extra_transformed is not None:
@@ -941,6 +956,10 @@ print("SUCCESS: Pass 2 IK complete (22 markers)")
 
     if result.returncode == 0 and new_mot_path.exists():
         print(f"  Pass 2 MOT: {new_mot_path}")
+        # Remove Pass 1 .osim model (only keep the 22-marker model)
+        if osim_path.exists() and modified_osim != osim_path:
+            osim_path.unlink()
+            print(f"  Removed Pass 1 model: {osim_path.name}")
         return new_mot_path
     else:
         print("  Pass 2 IK failed, using Pose2Sim result")
@@ -1071,6 +1090,7 @@ def main():
         pose_model=args.pose_model,
         focal_length=args.focal_length,
         correct_lean=args.correct_lean,
+        single_level=args.single_level,
     )
 
 

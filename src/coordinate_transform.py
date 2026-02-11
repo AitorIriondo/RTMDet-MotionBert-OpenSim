@@ -86,6 +86,7 @@ class CoordinateTransformer:
         align_to_ground: bool = True,
         correct_lean: bool = True,
         depth_factor: float = 0.3,
+        single_level: bool = False,
     ) -> np.ndarray:
         """
         Transform keypoints from RTMPose3D to OpenSim coordinates.
@@ -106,6 +107,8 @@ class CoordinateTransformer:
             depth_factor: Scale factor for X (depth) deviations from pelvis.
                 RTMPose3D depth is ~3x noisier than lateral. 0.3 compresses
                 depth to match lateral confidence. 1.0 = no compression.
+            single_level: If True, per-frame strict grounding (lowest foot = 0
+                every frame). If False (default), smoothed ground reference.
 
         Returns:
             Transformed keypoints in OpenSim coordinates
@@ -137,7 +140,7 @@ class CoordinateTransformer:
 
         # Align to ground
         if align_to_ground:
-            transformed = self._align_to_ground(transformed)
+            transformed = self._align_to_ground(transformed, single_level=single_level)
 
         # Convert units
         transformed = transformed * self.scale_factor
@@ -155,6 +158,7 @@ class CoordinateTransformer:
         correct_lean: bool = False,
         fps: float = 30.0,
         foot_indices: Optional[Dict[str, List[int]]] = None,
+        single_level: bool = False,
     ) -> np.ndarray:
         """
         Transform keypoints from MotionBERT H36M camera coords to OpenSim.
@@ -174,6 +178,8 @@ class CoordinateTransformer:
             fps: Video frame rate (needed for foot velocity computation)
             foot_indices: Dict with 'left' and 'right' keypoint index lists.
                 Defaults to COCO-133 feet (ankles + toes + heels).
+            single_level: If True, per-frame strict grounding (lowest foot = 0
+                every frame). If False (default), smoothed ground reference.
 
         Returns:
             Transformed keypoints in OpenSim coordinates
@@ -203,7 +209,7 @@ class CoordinateTransformer:
 
         # Align to ground
         if align_to_ground:
-            transformed = self._align_to_ground(transformed)
+            transformed = self._align_to_ground(transformed, single_level=single_level)
 
         # Convert units
         transformed = transformed * self.scale_factor
@@ -564,11 +570,15 @@ class CoordinateTransformer:
         keypoints[:, :, 2] -= first_pelvis[2]
         return keypoints
 
-    def _align_to_ground(self, keypoints: np.ndarray) -> np.ndarray:
-        """Align feet to Y=0 using smoothed ground reference.
+    def _align_to_ground(self, keypoints: np.ndarray, single_level: bool = False) -> np.ndarray:
+        """Align feet to Y=0 using ground reference.
 
-        Uses a rolling minimum of foot heights (smoothed over ~0.5s window)
-        instead of per-frame minimum to reduce vertical jitter.
+        Args:
+            keypoints: (N, K, 3) array in OpenSim coords (Y = up).
+            single_level: If True, use per-frame minimum (lowest foot = 0
+                every frame, removes all vertical translation). If False
+                (default), use a rolling minimum smoothed over ~0.5s to
+                preserve natural vertical motion while reducing jitter.
         """
         N = keypoints.shape[0]
 
@@ -583,11 +593,15 @@ class CoordinateTransformer:
             ]
             min_foot_y[i] = min(foot_heights)
 
-        # Smooth the ground reference (15-frame window ≈ 0.5s at 30fps)
-        if N > 15:
-            ground_ref = uniform_filter1d(min_foot_y, size=15)
-        else:
+        if single_level:
+            # Per-frame strict grounding: lowest foot = Y=0 every frame
             ground_ref = min_foot_y
+        else:
+            # Smooth the ground reference (15-frame window ≈ 0.5s at 30fps)
+            if N > 15:
+                ground_ref = uniform_filter1d(min_foot_y, size=15)
+            else:
+                ground_ref = min_foot_y
 
         for i in range(N):
             keypoints[i, :, 1] -= ground_ref[i]
