@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -240,7 +241,7 @@ def run_pose2sim_kinematics(trc_path: Path, output_dir: Path,
     output_dir = Path(output_dir).resolve()
 
     # Find Python with OpenSim + Pose2Sim
-    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = os.environ.get("POSE2SIM_PYTHON", r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe")
     if not Path(POSE2SIM_PYTHON).exists():
         # Try current env
         try:
@@ -434,7 +435,7 @@ def rerun_ik_with_pelvis_regularization(output_dir: Path, trc_path: Path):
     tree.write(str(modified_setup), xml_declaration=True, encoding='UTF-8')
 
     # Run pass 2 IK
-    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = os.environ.get("POSE2SIM_PYTHON", r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe")
     ik_script = f'''
 import opensim
 tool = opensim.InverseKinematicsTool(r"{modified_setup}")
@@ -550,12 +551,19 @@ def run_basic_opensim_ik(trc_path: Path, output_dir: Path,
     """Fallback: basic OpenSim IK without Pose2Sim scaling."""
     import subprocess
 
-    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = os.environ.get("POSE2SIM_PYTHON", r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe")
     trc_path = Path(trc_path).resolve()
     output_dir = Path(output_dir).resolve()
 
-    # Find Pose2Sim setup path
-    pose2sim_setup = Path(r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\Lib\site-packages\Pose2Sim\OpenSim_Setup")
+    # Find Pose2Sim setup path — derive from Pose2Sim package location
+    pose2sim_setup = None
+    try:
+        import Pose2Sim
+        pose2sim_setup = Path(Pose2Sim.__file__).parent / "OpenSim_Setup"
+    except ImportError:
+        pass
+    if pose2sim_setup is None or not pose2sim_setup.exists():
+        pose2sim_setup = Path(r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\Lib\site-packages\Pose2Sim\OpenSim_Setup")
 
     ik_script = '''
 import opensim as osim
@@ -638,7 +646,7 @@ def run_glb_export(mot_path: Path, output_dir: Path):
     """
     import subprocess
 
-    BLENDER_PATH = r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe"
+    BLENDER_PATH = os.environ.get("BLENDER_PATH", r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe")
     blend_template = PROJECT_ROOT / "Import_OS4_Patreon_Aitor_Skely.blend"
     blender_script = PROJECT_ROOT / "scripts" / "export_glb_skely.py"
 

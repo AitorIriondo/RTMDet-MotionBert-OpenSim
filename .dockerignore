@@ -1,0 +1,45 @@
+# Output directories
+output_*/
+test_output_*/
+
+# Input videos (mount at runtime)
+videos/
+
+# Git
+.git/
+.gitmodules
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# IDE / editor
+.claude/
+.vscode/
+.idea/
+
+# Temp files
+.tmp.driveupload/
+nul
+
+# Large docs (not needed at runtime)
+MVN_User_Manual.pdf
+MVNX_EXPORTER_PROMPT.md
+*.mvnx
+
+# Media files (mount at runtime)
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# MotionBERT git submodule (weights are in models/MotionBERT/)
+MotionBERT/
+
+# Stray copies
+C:OpenSimToGLB/
+C:OpenSimToGLBexport_glb_skely.py
+C:OpenSimToGLBImport_OS4_Patreon_Aitor_Skely.blend
+_analyze_mvnx.py

@@ -1,0 +1,16 @@
+services:
+  pipeline:
+    build: .
+    image: rtm-opensim
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./videos:/data/input:ro
+      - ./output:/data/output
+    # Override command args as needed:
+    #   docker compose run pipeline --input /data/input/video.mp4 --height 1.69 --output /data/output

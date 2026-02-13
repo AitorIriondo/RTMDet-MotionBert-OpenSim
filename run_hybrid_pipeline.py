@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -925,7 +926,7 @@ def _rerun_ik_light_regularization(output_dir: Path, trc_path: Path):
     tree.write(str(modified_setup), xml_declaration=True, encoding='UTF-8')
 
     # --- Step 3: Run IK ---
-    POSE2SIM_PYTHON = r"C:\Users\iria\AppData\Local\anaconda3\envs\Pose2Sim\python.exe"
+    POSE2SIM_PYTHON = os.environ.get("POSE2SIM_PYTHON", r"C:\ProgramData\anaconda3\envs\Pose2Sim\python.exe")
     ik_script = f'''
 import opensim
 tool = opensim.InverseKinematicsTool(r"{modified_setup}")

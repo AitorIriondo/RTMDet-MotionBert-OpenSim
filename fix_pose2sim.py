@@ -37,13 +37,22 @@ def find_pose2sim_markers():
         import Pose2Sim
         pose2sim_dir = Path(Pose2Sim.__file__).parent
     except ImportError:
-        # Try common conda paths
+        # Try common conda paths (Windows + Linux)
         for base in [
             Path(sys.prefix),
             Path.home() / "AppData/Local/anaconda3/envs/Pose2Sim",
             Path("C:/ProgramData/anaconda3/envs/Pose2Sim"),
+            Path("/opt/conda/envs/Pose2Sim"),
+            Path.home() / "miniconda3/envs/Pose2Sim",
+            Path.home() / "anaconda3/envs/Pose2Sim",
         ]:
+            # Windows: Lib/site-packages, Linux: lib/pythonX.Y/site-packages
             pose2sim_dir = base / "Lib/site-packages/Pose2Sim"
+            if pose2sim_dir.exists():
+                break
+            for sp in base.glob("lib/python*/site-packages/Pose2Sim"):
+                pose2sim_dir = sp
+                break
             if pose2sim_dir.exists():
                 break
         else:
